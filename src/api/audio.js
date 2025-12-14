@@ -3,8 +3,7 @@ import request from './request'
 export function uploadAudio(file) {
   const formData = new FormData()
   formData.append('file', file)
-  return request.post('/audio/upload', formData, {
+  return request.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
-

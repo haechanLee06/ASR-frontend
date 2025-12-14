@@ -1,8 +1,19 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import { pinia } from '@/stores'
 
 const service = axios.create({
   baseURL: 'http://localhost:5000',
+})
+
+service.interceptors.request.use((config) => {
+  const userStore = useUserStore(pinia)
+  if (userStore?.token) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${userStore.token}`
+  }
+  return config
 })
 
 service.interceptors.response.use(
@@ -15,10 +26,16 @@ service.interceptors.response.use(
     return res
   },
   (error) => {
-    ElMessage.error(error?.response?.data?.message || error.message || '网络错误')
+    const status = error?.response?.status
+    if (status === 401) {
+      const userStore = useUserStore(pinia)
+      userStore.logout()
+      location.assign('/login')
+    } else {
+      ElMessage.error(error?.response?.data?.message || error.message || '网络错误')
+    }
     return Promise.reject(error)
   }
 )
 
 export default service
-
