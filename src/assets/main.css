@@ -1,0 +1,66 @@
+:root {
+  /* Core Palette */
+  --color-primary: #409EFF;
+  --color-primary-light: #79bbff; /* Lighter shade for hover/etc */
+  --color-primary-dark: #337ecc;  /* Darker shade */
+  
+  --color-background: #F5F7FA;
+  --color-surface: #FFFFFF;
+  
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  
+  /* Chat Bubbles */
+  --chat-bubble-left: #F3F4F6;
+  --chat-bubble-right: #95EC69;
+  
+  /* Standard Element Plus Colors (fallback reference) */
+  --el-color-primary: var(--color-primary);
+  /* You can override other Element Plus vars here if needed */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-background);
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* Utility for layout */
+.page-container {
+  background-color: var(--color-surface);
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  min-height: calc(100vh - 100px); /* fallback height */
+}
+
+/* Scrollbar styling for webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

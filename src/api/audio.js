@@ -7,3 +7,11 @@ export function uploadAudio(file) {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
+
+export const getDetail = (id) => {
+  return request.get(`/record/${id}`)
+}
+
+export const deleteRecord = (id) => {
+  return request.delete(`/record/${id}`)
+}

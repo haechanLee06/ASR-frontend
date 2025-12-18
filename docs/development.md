@@ -20,99 +20,85 @@ frontend/
     api/
       request.js           ← Axios 实例与响应拦截器
       audio.js             ← 音频上传 API 封装
-    components/            ← 业务组件（模板示例保留）
-    assets/                ← 静态资源
-    main.js                ← 应用入口，注册 Element Plus
-    router/                ← 路由配置与守卫（/login、/dashboard、/history、/detail/:id）
-    stores/                ← Pinia 状态（用户认证 token/username）
+    assets/
+      main.css             ← 全局样式变量与设计规范
+    components/            ← 业务组件
+    main.js                ← 应用入口，注册 Element Plus、Icons、CSS
+    router/                ← 路由配置与守卫
+    stores/                ← Pinia 状态
     views/
-      Login.vue            ← 登录/注册页
-      Layout.vue           ← 后台框架（侧边栏+顶部）
-      Dashboard.vue        ← 上传页（成功后跳转详情）
+      Login.vue            ← 现代化登录页
+      Layout.vue           ← 后台框架（深色侧边栏+白色顶部）
+      Dashboard.vue        ← 工作台（大尺寸拖拽上传）
       History.vue          ← 历史记录列表
-      Detail.vue           ← 详情页（微信风格聊天 + 固定播放器）
+      Detail.vue           ← 详情页（左侧聊天流 + 右侧控制台）
   vite.config.js           ← Vite 配置与 @ 别名
-  docs/development.md      ← 开发文档（本文件）
+  docs/development.md      ← 开发文档
 ```
 
+## UI 设计系统
+- **配色**：
+  - Primary: `#409EFF`
+  - Background: `#F5F7FA`
+  - Surface: `#FFFFFF`
+  - Chat Bubbles: Left `#F3F4F6`, Right `#95EC69`
+- **字体**：Inter, PingFang SC, Helvetica Neue
+- **图标**：`@element-plus/icons-vue` 全局注册
+
 ## 架构设计
-- UI 层：基于 Element Plus 布局（`el-container`、`el-header`、`el-main`），`el-upload` 拖拽上传，`el-table` 列表展示，`<audio>` 分段播放。
-- API 层：`src/api` 统一封装请求；`request.js` 管理实例与拦截，`audio.js` 提供上传接口。
-- 状态管理：引入 `Pinia`（`src/stores`），集中维护用户认证信息（`token`、`username`），提供 `login`/`logout` 行为。
-- 路由系统：引入 `vue-router`（`src/router`），配置登录与后台主框架，路由守卫基于 Token 实现未登录重定向。
+- UI 层：基于 Element Plus 布局，深度定制样式。
+  - **Layout**：固定侧边栏 (`#001529`)，顶部面包屑与用户菜单。
+  - **Detail**：双栏自适应布局。左侧聊天流 (Scrollable)，右侧固定控制台 (Sticky)，支持点击气泡自动跳转并播放对应音频片段。
+- API 层：`src/api` 统一封装。
+- 状态管理：Pinia (`src/stores`)。
+- 路由系统：`vue-router`。
 
 ## 前后端交互约定
 - 基地址：`http://localhost:5000`
-- 上传接口：`POST /upload`
-  - Header：`Content-Type: multipart/form-data`
-  - Body：`file`
-  - 响应：`{ code: 200, data: { record_id: string } }`
-- 查询详情：`GET /record/:id`
-  - 响应：`{ code: 200, data: { segments: Segment[] } }`
+- 上传接口：`POST /upload` -> `{ record_id, status: 'pending' }` (非阻塞)
+- 查询详情：`GET /record/:id` -> `{ status, segments: [...] }`
 - 历史列表：`GET /history`
-- 认证：`POST /auth/login`、`POST /auth/register`
-  - 登录响应：`{ code: 200, data: { access_token: string } }`
+- 删除记录：`DELETE /record/:id`
+- 认证：`POST /auth/login`
 
-## 请求工具说明
-- 文件：`src/api/request.js`
-- 行为：创建 Axios 实例（`baseURL`=`http://localhost:5000`），在响应拦截器中：
-  - 当 `res.data.code !== 200`：通过 Element Plus `ElMessage.error` 提示错误，并 `Promise.reject`。
-  - 网络或服务端错误：统一提示并抛出异常。
-- 返回：成功时返回 `response.data`，便于直接取用 `data.segments`。
-- 鉴权：请求拦截自动注入 `Authorization: Bearer <token>`；收到 `401` 时登出并跳转 `/login`。
+## 异步架构与轮询机制 (Async & Polling)
+为适配后端异步处理流程，前端实现了以下机制：
 
-## 页面功能与实现
-- Login：登录/注册切换；成功后保存 Token 到 Pinia 与 localStorage。
-- Layout：侧边导航（工作台/历史），顶部显示用户名与退出。
-- Dashboard：仅负责上传；成功后读取 `record_id` 并跳转 `/detail/:id`。
-- Detail：
-  - 左侧微信风格聊天窗口：`spk0` 左对白气泡白/灰，`spk1` 右侧绿色气泡；选中高亮。
-  - 右侧固定音频面板（Sticky）：显示当前文本，大字号，自动播放当前段音频。
-  - 音频地址拼接：`http://localhost:5000/` + `path.replace(/^\//, '')`。
-- History：列表展示上传时间、文件名、时长、状态；点击“查看”跳转详情页。
+### 1. Dashboard (工作台)
+- **非阻塞上传**：上传文件后立即返回 `record_id`，不再全屏 Loading。
+- **任务队列**：上传成功后，任务加入页面下方的“处理队列”列表。
+- **状态轮询**：
+  - 组件挂载时 (`onMounted`) 启动轮询器 (`setInterval`)，每 2 秒查询一次状态。
+  - 仅针对状态为 `pending` 或 `processing` 的任务调用 `getDetail`。
+  - 组件销毁时 (`onUnmounted`) 自动清除定时器。
+- **状态可视化**：
+  - `pending/processing`: 显示加载动画与进度条。
+  - `success`: 显示“查看”按钮。
+  - `failed`: 显示错误提示。
 
-## 开发与启动
-- 安装依赖：`npm install`
-- 启动开发：`npm run dev` → 访问 `http://localhost:5173/`
-- 构建生产：`npm run build`
-- 预览生产：`npm run preview`
+### 2. Detail (详情页)
+- **状态自适应**：进入页面时检查记录状态。
+- **加载态**：若状态为 `pending/processing`，显示全屏 Loading 并开启轮询，直到状态变更为 `success` 或 `failed`。
+- **错误态**：若状态为 `failed`，展示 `el-result` 错误页。
+- **完成态**：若状态为 `success`，展示聊天流与播放器。
 
-## 提交与推送
-- 常规流程：
-  - `git add .`
-  - `git commit -m "feat: 描述本次改动"`
-  - `git push`
-- 分支策略（建议）：
-  - 主分支：`main`
-  - 功能分支：`feature/*`
-  - 修复分支：`fix/*`
-
-## 代码约定
-- 使用 Composition API 与 `<script setup>`。
-- 统一通过 `@` 别名导入 `src` 下模块（`vite.config.js` 已配置）。
-- 错误使用 `ElMessage` 统一提示；避免在控制台打印敏感信息。
+### 3. History (历史记录)
+- **状态列**：根据 `status` 显示不同颜色的 Tag (Success=Green, Processing=Blue, Failed=Red)。
+- **删除功能**：支持删除记录，操作前需二次确认。
 
 ## 变更记录
 - 初始化：Vite + Vue 3 项目，集成 Element Plus 与 Axios。
-- 新增：`@` 别名配置于 `vite.config.js`。
-- 新增：请求工具 `src/api/request.js` 与上传接口封装 `src/api/audio.js`。
-- 重写：`src/App.vue` → 作为路由根容器（`<router-view />`）。
-- 新增：本开发文档，并完善架构与交互说明。
-- 接口联调：上传接口统一指向 `/upload`；优化音频 URL 拼接防止双斜杠；确认表格字段与后端 JSON（`text`, `spk`, `start`, `end`）完全对应。
-- 架构升级：
-  - 安装并集成 `vue-router` 与 `pinia`；
-  - 新建 `src/router/index.js`，配置 `/login`、`/dashboard`、`/history`，以及父路由 `Layout.vue`；
-  - 新建 `src/stores/index.js` 与 `src/stores/user.js`，集中管理用户状态与认证；
-  - 升级 `src/api/request.js`，在请求拦截中自动注入 `Authorization: Bearer <token>`，在响应拦截中处理 `401` 并登出跳转；
-  - 页面拆分：`Login.vue`（登录/注册）、`Layout.vue`（框架与导航）、`Dashboard.vue`（上传识别）、`History.vue`（历史列表）。
- - 用户流程重构：
-   - Dashboard 仅上传并在成功后跳转至 `/detail/:id`；
-   - 新增 `Detail.vue` 展示微信风格聊天详情，右侧固定音频面板；
-   - History 列表加入“查看”跳转详情；
-   - 修正登录 Token 解析为 `res.data.access_token` 优先，优化错误提示。
+- 架构升级：引入 Router、Pinia，拆分页面。
+- 用户流程重构：Dashboard -> Detail 跳转，History -> Detail 跳转。
+- UI/UX 全面重构：建立设计系统，重构核心页面布局。
+- **异步架构升级 (Current)**：
+  - 支持非阻塞上传与任务队列管理。
+  - 实现 Dashboard 与 Detail 页面的状态轮询机制。
+  - 新增删除功能与状态可视化。
+  - API 层适配 `deleteRecord` 与 `status` 字段。
 
 ## 后续规划（建议）
 - 接入 `TailwindCSS` 以增强布局与响应式设计。
 - 引入持久化或路由，用于历史记录与多页面导航。
 - 表格增强：分页、排序、筛选、导出 CSV。
-- 更丰富的错误处理：针对后端返回不同错误码的细粒度提示。
+- WebSocket 集成：若需更实时状态更新，可升级轮询为 WebSocket 推送。
