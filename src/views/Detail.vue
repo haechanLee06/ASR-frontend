@@ -114,7 +114,7 @@ const togglePlay = async (segment) => {
   isPlaying.value = false // Wait for load
 
   // Set new source
-  const audioUrl = getAudioUrl(segment.path)
+  const audioUrl = getAudioUrl(segment.audio_url)
   
   if (audioUrl) {
     audioElement.src = audioUrl
