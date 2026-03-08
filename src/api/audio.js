@@ -15,3 +15,15 @@ export const getDetail = (id) => {
 export const deleteRecord = (id) => {
   return request.delete(`/record/${id}`)
 }
+
+export const getTranscriptData = (id) => {
+  return request.get(`/api/transcript_data/${id}`)
+}
+
+export const updateSegmentText = (recordId, segmentIndex, text) => {
+  return request.put(`/record/${recordId}/segment/${segmentIndex}`, { text })
+}
+
+export const generateSummary = (id) => {
+  return request.post(`/api/summary/${id}`, {}, { timeout: 120000 })
+}

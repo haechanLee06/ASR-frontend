@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
-import { getDetail } from '@/api/audio'
-import { VideoPlay, VideoPause, ArrowLeft, ArrowRight, Loading } from '@element-plus/icons-vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getDetail, updateSegmentText } from '@/api/audio'
+import { VideoPlay, VideoPause, ArrowLeft, ArrowRight, Loading, Edit } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const route = useRoute()
+const router = useRouter()
 const info = ref({ segments: [] })
 const currentId = ref(0) // Default to first segment if available, or -1
 const chatPanelRef = ref(null)
@@ -114,7 +116,7 @@ const togglePlay = async (segment) => {
   isPlaying.value = false // Wait for load
 
   // Set new source
-  const audioUrl = getAudioUrl(segment.audio_url)
+  const audioUrl = getAudioUrl(segment.path)
   
   if (audioUrl) {
     audioElement.src = audioUrl
@@ -203,6 +205,38 @@ const stopPolling = () => {
   }
 }
 
+const editSegment = (item) => {
+  item.isEditing = true
+  item.editText = item.text
+}
+
+const cancelEdit = (item) => {
+  item.isEditing = false
+}
+
+const saveEdit = async (item, index) => {
+  if (!item.editText || item.editText.trim() === '') {
+    ElMessage.warning('文本不能为空')
+    return
+  }
+  if (item.editText === item.text) {
+    cancelEdit(item)
+    return
+  }
+  
+  item.isSaving = true
+  try {
+    const res = await updateSegmentText(route.params.id, index, item.editText)
+    item.text = item.editText
+    item.isEditing = false
+    ElMessage.success('修改已保存')
+  } catch (e) {
+    // 错误在拦截器中已提示
+  } finally {
+    item.isSaving = false
+  }
+}
+
 onMounted(() => {
   fetchDetail()
 })
@@ -267,8 +301,26 @@ onUnmounted(() => {
               <span class="time-tag">#{{ index + 1 }}</span>
             </div>
             <div class="chat-bubble">
-              <div class="bubble-text">
+              <!-- Edit Mode -->
+              <div v-if="item.isEditing" class="bubble-edit-area" @click.stop>
+                <el-input
+                  v-model="item.editText"
+                  type="textarea"
+                  autosize
+                  class="edit-input"
+                />
+                <div class="edit-actions">
+                  <el-button size="small" @click="cancelEdit(item)" :disabled="item.isSaving">取消</el-button>
+                  <el-button type="primary" size="small" :loading="item.isSaving" @click="saveEdit(item, index)">保存</el-button>
+                </div>
+              </div>
+              
+              <!-- Display Mode -->
+              <div v-else class="bubble-text">
                 {{ item.text }}
+                <div class="edit-btn-wrapper" @click.stop="editSegment(item)">
+                  <el-icon class="edit-icon"><Edit /></el-icon>
+                </div>
               </div>
               <!-- Mini Player Controls -->
               <div class="mini-player-controls">
@@ -321,6 +373,13 @@ onUnmounted(() => {
         <div class="control-card">
           <div class="card-header">
             <h3>当前片段</h3>
+            <el-button 
+              type="primary" 
+              plain 
+              @click="router.push(`/transcript-check/${route.params.id}`)"
+            >
+              进入剧本模式 / 准备生成总结
+            </el-button>
           </div>
           
           <div v-if="currentSegment" class="current-info">
@@ -477,6 +536,55 @@ onUnmounted(() => {
 /* Hybrid Bubble Components */
 .bubble-text {
   word-break: break-word;
+  position: relative;
+  padding-bottom: 2px;
+}
+
+.edit-btn-wrapper {
+  position: absolute;
+  right: -8px;
+  bottom: -6px;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: opacity 0.2s, color 0.2s;
+  padding: 4px;
+}
+
+.edit-btn-wrapper:hover {
+  opacity: 1;
+  color: var(--color-primary);
+}
+
+.row-right .edit-btn-wrapper:hover {
+  color: #fff;
+}
+
+.bubble-edit-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edit-input :deep(.el-textarea__inner) {
+  font-family: inherit;
+  font-size: 15px;
+}
+
+.row-right .edit-input :deep(.el-textarea__inner) {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.row-right .edit-input :deep(.el-textarea__inner:focus) {
+  border-color: #fff;
 }
 
 .mini-player-controls {
@@ -589,8 +697,15 @@ onUnmounted(() => {
   box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
 .card-header h3 {
-  margin: 0 0 20px 0;
+  margin: 0;
   font-size: 18px;
   color: var(--text-primary);
 }

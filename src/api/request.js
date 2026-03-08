@@ -19,7 +19,8 @@ service.interceptors.request.use((config) => {
 service.interceptors.response.use(
   (response) => {
     const res = response.data
-    if (res && res.code !== 200) {
+    // Allow success if code is 200 OR success is true (for APIs that don't return code)
+    if (res && res.code !== 200 && res.success !== true) {
       ElMessage.error(res.message || '请求失败')
       return Promise.reject(new Error(res.message || 'Error'))
     }
