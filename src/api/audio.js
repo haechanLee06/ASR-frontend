@@ -25,5 +25,5 @@ export const updateSegmentText = (recordId, segmentIndex, text) => {
 }
 
 export const generateSummary = (id) => {
-  return request.post(`/api/summary/${id}`, {}, { timeout: 120000 })
+  return request.post(`/api/summary/${id}`, {}, { timeout: 300000 })
 }

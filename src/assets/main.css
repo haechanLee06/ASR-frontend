@@ -1,4 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
+
   /* Core Palette */
   --color-primary: #409EFF;
   --color-primary-light: #79bbff; /* Lighter shade for hover/etc */

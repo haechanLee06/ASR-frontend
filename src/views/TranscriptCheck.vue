@@ -57,13 +57,15 @@ const handleSummary = async () => {
       }
     }
 
-    // 核心解包：
-    // request.js 已将 axios response.data 提取出来，所以 res = { code:200, data:{summary:{...}} }
-    // 第一层：取 .data（即后端业务数据层）
-    const businessData = parsedData?.data || parsedData
-    // 第二层：取 .summary（即 AI 分析数据）
-    const targetData = businessData?.summary || businessData
-    console.log('[handleSummary] 剥离后的 targetData:', targetData)
+    // 核心解包（按后端实际返回的 data.summary.summary 结构逐层剥离）
+    // res = { code:200, data: { summary: { summary: { overview, analysis_breakdown } } } }
+    const businessData = parsedData?.data || parsedData          // 取 .data
+    const layer1       = businessData?.summary || businessData   // 取 .summary（第一层）
+    const targetData   = layer1?.summary || layer1               // 取 .summary（第二层，如有）
+    console.log('[handleSummary] businessData:', businessData)
+    console.log('[handleSummary] layer1:', layer1)
+    console.log('[handleSummary] targetData (最终使用):', targetData)
+
 
     if (targetData?.overview && targetData?.analysis_breakdown) {
 
