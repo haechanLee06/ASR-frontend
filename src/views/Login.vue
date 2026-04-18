@@ -191,7 +191,7 @@ onMounted(() => {
              border: 1px solid rgba(255,255,255,0.08);
              border-top: 1px solid rgba(255,255,255,0.20);
              border-left: 1px solid rgba(255,255,255,0.20);
-             box-shadow: -15px 0 60px rgba(0,0,0,0.40);
+              box-shadow: -20px 0 50px rgba(0,0,0,0.55), 0 0 80px rgba(0,0,0,0.25);
            ">
 
         <div class="w-full max-w-sm flex flex-col space-y-8">
@@ -210,11 +210,11 @@ onMounted(() => {
             <div class="flex flex-col gap-1.5">
               <label class="text-xs font-semibold text-slate-400 tracking-wide">用户名</label>
                <div class="relative flex items-center transition-all duration-150"
-                    :style="userFocused
-                      ? 'border-radius:3px;border:1px solid rgba(167,139,250,0.80);background:rgba(255,255,255,0.10);box-shadow:0 0 0 2px rgba(99,102,241,0.25);'
-                      : 'border-radius:3px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);'">
+                     :style="userFocused
+                       ? 'border-radius:3px;border:1px solid rgba(167,139,250,0.70);background:rgba(0,0,0,0.35);box-shadow:0 0 0 2px rgba(99,102,241,0.20);'
+                       : 'border-radius:3px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);'">
                 <svg class="absolute left-3.5 w-5 h-5 pointer-events-none transition-colors"
-                     :class="userFocused ? 'text-indigo-300' : 'text-slate-400'"
+                     :class="userFocused ? 'text-indigo-300' : 'text-slate-500'"
                      viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
@@ -232,10 +232,10 @@ onMounted(() => {
               <label class="text-xs font-semibold text-slate-400 tracking-wide">密码</label>
                <div class="relative flex items-center transition-all duration-150"
                     :style="passFocused
-                      ? 'border-radius:3px;border:1px solid rgba(167,139,250,0.80);background:rgba(255,255,255,0.10);box-shadow:0 0 0 2px rgba(99,102,241,0.25);'
-                      : 'border-radius:3px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);'">
+                      ? 'border-radius:3px;border:1px solid rgba(167,139,250,0.70);background:rgba(0,0,0,0.35);box-shadow:0 0 0 2px rgba(99,102,241,0.20);'
+                      : 'border-radius:3px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.25);'">
                 <svg class="absolute left-3.5 w-5 h-5 pointer-events-none transition-colors"
-                     :class="passFocused ? 'text-indigo-300' : 'text-slate-400'"
+                     :class="passFocused ? 'text-indigo-300' : 'text-slate-500'"
                      viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -267,12 +267,12 @@ onMounted(() => {
                            text-white text-base font-semibold tracking-[2px]
                            disabled:opacity-50 disabled:cursor-not-allowed
                            hover:-translate-y-px transition-all duration-200 cursor-pointer"
-                    style="border-radius:3px;
-                           border:1px solid rgba(99,102,241,0.50);
-                           background:rgba(79,70,229,0.85);
-                           box-shadow:0 0 20px rgba(79,70,229,0.40);"
-                    @mouseover="$event.currentTarget.style.background='rgba(99,91,249,0.95)'"
-                    @mouseleave="$event.currentTarget.style.background='rgba(79,70,229,0.85)'">
+                     style="border-radius:3px;
+                            border:1px solid rgba(99,102,241,0.30);
+                            background:rgba(55,48,163,0.80);
+                            box-shadow:0 0 16px rgba(55,48,163,0.40);"
+                     @mouseover="$event.currentTarget.style.background='rgba(67,56,202,0.90)'"
+                     @mouseleave="$event.currentTarget.style.background='rgba(55,48,163,0.80)'">
               <span v-if="loading" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
               <span v-else>{{ isRegister ? '注 册' : '登 录' }}</span>
             </button>

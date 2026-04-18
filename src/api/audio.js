@@ -27,3 +27,22 @@ export const updateSegmentText = (recordId, segmentIndex, text) => {
 export const generateSummary = (id) => {
   return request.post(`/api/summary/${id}`, {}, { timeout: 300000 })
 }
+
+export const getDashboardAmbient = () => {
+  return request.get('/api/dashboard/ambient')
+}
+
+export const getDashboardHealth = () => {
+  return request.get('/api/dashboard/health')
+}
+export const getDashboardStats = () => {
+  return request.get('/api/dashboard/stats')
+}
+
+export const getDashboardKeywords = () => {
+  return request.get('/api/dashboard/keywords')
+}
+
+export const getDashboardRecentRecords = () => {
+  return request.get('/api/dashboard/recent_records')
+}
