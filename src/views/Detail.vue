@@ -289,7 +289,7 @@ onUnmounted(() => {
           <div class="chat-avatar">
             <el-avatar 
               :size="40" 
-              :style="{ backgroundColor: item.spk === 'spk0' ? 'var(--color-primary)' : '#ff9900' }"
+              :style="{ backgroundColor: item.spk === 'spk0' ? '#ffffff' : 'rgba(245, 242, 239, 0.8)', color: '#000', border: '1px solid #e5e5e5' }"
             >
               {{ item.spk === 'spk0' ? 'A' : 'B' }}
             </el-avatar>
@@ -515,22 +515,22 @@ onUnmounted(() => {
 
 .row-left .chat-bubble {
   background-color: #ffffff;
-  color: #303133;
+  color: #000000;
   border-top-left-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid #ebeef5;
+  box-shadow: var(--shadow-outline), var(--shadow-inset);
+  border: none;
 }
 
 .row-right .chat-bubble {
-  background-color: var(--el-color-primary);
-  color: #ffffff;
+  background-color: rgba(245, 242, 239, 0.8);
+  color: #000000;
   border-top-right-radius: 4px;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
+  box-shadow: var(--shadow-warm), var(--shadow-inset);
   border: none;
 }
 
 .row-active .chat-bubble {
-  border: 2px solid var(--color-primary);
+  box-shadow: 0 0 0 2px #000000, var(--shadow-inset);
 }
 
 /* Hybrid Bubble Components */
@@ -629,15 +629,15 @@ onUnmounted(() => {
 }
 
 .row-right .mini-player-controls :deep(.el-slider__runway) {
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
 .row-right .mini-player-controls :deep(.el-slider__bar) {
-  background-color: #ffffff;
+  background-color: var(--color-primary);
 }
 
 .row-right .mini-player-controls :deep(.el-slider__button) {
-  border-color: #ffffff;
+  border-color: var(--color-primary);
   background-color: #ffffff;
 }
 
@@ -652,7 +652,7 @@ onUnmounted(() => {
 
 .row-right .time-display,
 .row-right .player-icon {
-  color: #fff; /* Better contrast on primary color background */
+  color: var(--text-secondary);
 }
 
 /* Timestamp Hover */
@@ -672,7 +672,7 @@ onUnmounted(() => {
 
 .row-right .timestamp-hover {
   left: 0;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(0, 0, 0, 0.4);
 }
 
 .empty-tip {

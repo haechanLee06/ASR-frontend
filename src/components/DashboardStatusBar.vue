@@ -8,6 +8,7 @@ const userStore = useUserStore()
 const username  = computed(() => userStore.username || 'hae')
 
 // ─── 动态问候语 ────────────────────────────────────────────────────────────
+// ─── 动态问候语 ────────────────────────────────────────────────────────────
 const greeting = computed(() => {
   const h = new Date().getHours()
   let greet
@@ -77,21 +78,21 @@ onMounted(async () => {
 
     <!-- ══ LEFT: 问候 + 环境信息 ══ -->
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight text-slate-900">
+      <h1 class="text-[36px] font-[300] tracking-[-0.96px] text-[#000000]" style="font-family: 'Waldenburg', sans-serif;">
         {{ greeting }}
       </h1>
-      <p class="text-[14px] text-slate-500 mt-1.5 font-medium flex items-center flex-wrap gap-x-3 gap-y-1">
+      <p class="text-[14px] text-[#777169] mt-2 font-[400] tracking-[0.16px] flex items-center flex-wrap gap-x-3 gap-y-1">
         <span>{{ currentDate }}</span>
         
         <template v-if="loadingAmbient">
-          <span class="inline-block w-32 h-3.5 bg-slate-200 rounded animate-pulse"></span>
+          <span class="inline-block w-32 h-3.5 bg-[#f5f5f5] rounded animate-pulse"></span>
         </template>
         <template v-else>
           <span>{{ ambientData.location }} · {{ ambientData.weather }} {{ ambientData.temperature }}°C</span>
         </template>
         
         <template v-if="loadingAmbient">
-          <span class="inline-block w-24 h-3.5 bg-slate-200 rounded animate-pulse"></span>
+          <span class="inline-block w-24 h-3.5 bg-[#f5f5f5] rounded animate-pulse"></span>
         </template>
         <template v-else>
           <span>系统已运行 {{ ambientData.uptime_days }}天 {{ ambientData.uptime_hours }}小时</span>
@@ -99,39 +100,37 @@ onMounted(async () => {
       </p>
     </div>
 
-    <!-- ══ RIGHT: 引擎状态由于专业性改为极简指示 ══ -->
+    <!-- ══ RIGHT: 引擎状态改为极简指示 ══ -->
     <div class="flex gap-3 flex-shrink-0">
       <!-- Paraformer -->
-      <div class="bg-white border border-slate-200 rounded-full px-3 py-1.5 shadow-sm text-[12px] font-medium text-slate-600 flex items-center gap-2">
+      <div class="bg-white border border-[#e5e5e5] shadow-xs-inset rounded-[9999px] px-4 py-1.5 text-[12px] font-medium text-[#4e4e4e] flex items-center gap-2">
         <template v-if="!loadingHealth && healthData.asr_online">
           <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-[#000000]"></span>
           </span>
-          <span>Paraformer: <span class="text-slate-900 ml-0.5">Online</span></span>
+          <span>Paraformer: <span class="text-[#000000] font-semibold ml-0.5">Online</span></span>
         </template>
         <template v-else>
           <span class="relative flex h-2 w-2">
-            <span class="relative inline-flex rounded-full h-2 w-2" :class="loadingHealth ? 'bg-slate-300 animate-pulse' : 'bg-rose-500'"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2" :class="loadingHealth ? 'bg-[#e5e5e5] animate-pulse' : 'bg-rose-500'"></span>
           </span>
-          <span>Paraformer: <span :class="loadingHealth ? 'text-slate-400' : 'text-slate-900 ml-0.5'">{{ loadingHealth ? '...' : 'Offline' }}</span></span>
+          <span>Paraformer: <span class="ml-0.5" :class="loadingHealth ? 'text-[#777169]' : 'text-rose-500'">{{ loadingHealth ? '...' : 'Offline' }}</span></span>
         </template>
       </div>
 
       <!-- Qwen -->
-      <div class="bg-white border border-slate-200 rounded-full px-3 py-1.5 shadow-sm text-[12px] font-medium text-slate-600 flex items-center gap-2">
+      <div class="bg-white border border-[#e5e5e5] shadow-xs-inset rounded-[9999px] px-4 py-1.5 text-[12px] font-medium text-[#4e4e4e] flex items-center gap-2">
         <template v-if="!loadingHealth && healthData.llm_online">
           <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-[#000000]"></span>
           </span>
-          <span>Qwen: <span class="text-slate-900 ml-0.5">Online</span></span>
+          <span>Qwen: <span class="text-[#000000] font-semibold ml-0.5">Online</span></span>
         </template>
         <template v-else>
           <span class="relative flex h-2 w-2">
-            <span class="relative inline-flex rounded-full h-2 w-2" :class="loadingHealth ? 'bg-slate-300 animate-pulse' : 'bg-rose-500'"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2" :class="loadingHealth ? 'bg-[#e5e5e5] animate-pulse' : 'bg-rose-500'"></span>
           </span>
-          <span>Qwen: <span :class="loadingHealth ? 'text-slate-400' : 'text-slate-900 ml-0.5'">{{ loadingHealth ? '...' : 'Offline' }}</span></span>
+          <span>Qwen: <span class="ml-0.5" :class="loadingHealth ? 'text-[#777169]' : 'text-rose-500'">{{ loadingHealth ? '...' : 'Offline' }}</span></span>
         </template>
       </div>
     </div>

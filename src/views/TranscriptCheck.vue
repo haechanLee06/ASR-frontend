@@ -406,8 +406,8 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.role-badge-a { background-color: #e0f2fe; color: #0369a1; }
-.role-badge-b { background-color: #fef3c7; color: #b45309; }
+.role-badge-a { background-color: #ffffff; color: #000000; box-shadow: var(--shadow-outline), var(--shadow-inset); }
+.role-badge-b { background-color: rgba(245, 242, 239, 0.8); color: #000000; box-shadow: var(--shadow-warm), var(--shadow-inset); }
 
 .text-district {
   flex: 1; /* 文本区域占满剩余空间 */

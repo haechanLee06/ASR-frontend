@@ -3,69 +3,90 @@
 @tailwind utilities;
 
 :root {
-
-  /* Core Palette */
-  --color-primary: #409EFF;
-  --color-primary-light: #79bbff; /* Lighter shade for hover/etc */
-  --color-primary-dark: #337ecc;  /* Darker shade */
+  /* Core Palette (ElevenLabs Style) */
+  --color-primary: #000000;
+  --color-primary-light: #333333;
+  --color-primary-dark: #000000;
   
-  --color-background: #F5F7FA;
-  --color-surface: #FFFFFF;
+  --color-background: #f5f5f5;
+  --color-surface: #ffffff;
   
-  --text-primary: #1F2937;
-  --text-secondary: #6B7280;
+  --text-primary: #000000;
+  --text-secondary: #4e4e4e;
+  --text-muted: #777169;
   
-  /* Chat Bubbles */
-  --chat-bubble-left: #F3F4F6;
-  --chat-bubble-right: #95EC69;
+  /* Chat Bubbles (Warm and Clean) */
+  --chat-bubble-left: #ffffff;
+  --chat-bubble-right: rgba(245, 242, 239, 0.8);
   
-  /* Standard Element Plus Colors (fallback reference) */
+  /* Standard Element Plus Colors Override */
   --el-color-primary: var(--color-primary);
-  /* You can override other Element Plus vars here if needed */
+  --el-color-primary-light-3: #4e4e4e;
+  --el-color-primary-light-5: #777169;
+  --el-color-primary-light-7: #e5e5e5;
+  --el-color-primary-light-8: #f5f5f5;
+  --el-color-primary-light-9: #f6f6f6;
+  --el-color-primary-dark-2: #000000;
+  
+  /* Shared Shadows */
+  --shadow-inset: rgba(0,0,0,0.075) 0px 0px 0px 0.5px inset;
+  --shadow-outline: rgba(0,0,0,0.06) 0px 0px 0px 1px;
+  --shadow-warm: rgba(78,50,23,0.04) 0px 6px 16px;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: "Inter", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-family: "Inter", "-apple-system", "system-ui", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--color-background);
   color: var(--text-primary);
+  letter-spacing: 0.16px; /* Airiness */
 }
 
+/* Light display variants for headings */
 h1 {
+  font-family: "Waldenburg", "-apple-system", "system-ui", sans-serif;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 300;
   margin: 0;
   color: var(--text-primary);
+  letter-spacing: -0.5px;
 }
 
 h2 {
+  font-family: "Waldenburg", "-apple-system", "system-ui", sans-serif;
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 300;
   margin: 0;
   color: var(--text-primary);
+  letter-spacing: -0.3px;
 }
 
 /* Utility for layout */
 .page-container {
   background-color: var(--color-surface);
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  min-height: calc(100vh - 100px); /* fallback height */
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--shadow-outline), var(--shadow-inset);
+  min-height: calc(100vh - 100px);
 }
 
-/* Scrollbar styling for webkit */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
+  background: #e5e5e5;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Base Buttons Pill Override for Element Plus */
+.el-button {
+  border-radius: 9999px !important;
 }
