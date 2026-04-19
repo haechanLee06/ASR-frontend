@@ -12,7 +12,7 @@ const activeMenu = computed(() => route.path)
 
 const breadcrumbs = computed(() => {
   const map = {
-    '/dashboard': '方言语音工作台',
+    '/dashboard': '语言转录工作台',
     '/history': '历史记录',
   }
   const title = map[route.path] || (route.path.startsWith('/detail') ? '识别详情' : '')
@@ -40,7 +40,7 @@ function handleLogout() {
             <line x1="18" y1="40" x2="28" y2="40" stroke="#000000" stroke-width="2" stroke-linecap="round"/>
           </svg>
           <div class="flex flex-col">
-            <span class="text-black font-semibold tracking-wide text-[14px]">方言语音转录</span>
+            <span class="text-black font-semibold tracking-wide text-[14px]">方言转录系统</span>
           </div>
       </div>
       <!-- Menu -->

@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTaskStore } from '@/stores/task'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { uploadAudio, getDetail, deleteRecord, getDashboardStats, getDashboardKeywords, getDashboardRecentRecords } from '@/api/audio'
+import { uploadAudio, getDetail, deleteRecord, getDashboardStats, getDashboardKeywords, getDashboardRecentRecords, getDashboardAmbient } from '@/api/audio'
 import { useRouter } from 'vue-router'
 import { UploadFilled, View, Loading, Delete } from '@element-plus/icons-vue'
 import DashboardStatusBar from '@/components/DashboardStatusBar.vue'
@@ -16,7 +16,8 @@ const { tasks } = storeToRefs(taskStore)
 let pollTimer = null
 
 // ─── 区块二：数据速览 & 文件上传 ────────────────────────────────────────────
-const stats = ref({ total_transcribed: 0, total_summarized: 0, uptime_hours: 0 })
+const stats = ref({ total_transcribed: 0, total_summarized: 0 })
+const uptime = ref({ days: 0, hours: 0 })
 const fileInput = ref(null)
 const isUploading = ref(false)
 const isDragging = ref(false)
@@ -178,12 +179,23 @@ const fetchDashboardStats = async () => {
     if (res?.data) {
       stats.value = {
         total_transcribed: res.data.total_transcribed || 0,
-        total_summarized: res.data.total_summarized || 0,
-        uptime_hours: res.data.uptime_hours || 0
+        total_summarized: res.data.total_summarized || 0
       }
     }
   } catch (error) {
     console.error('Failed to load dashboard stats:', error)
+  }
+
+  try {
+    const ambRes = await getDashboardAmbient()
+    if (ambRes?.data) {
+      uptime.value = {
+        days: ambRes.data.uptime_days || 0,
+        hours: ambRes.data.uptime_hours || 0
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load dashboard ambient info:', error)
   }
 }
 
@@ -402,7 +414,10 @@ const goTranscript = (row) => {
             </div>
           </div>
           <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4 border-b-0" style="font-family: 'Waldenburg', sans-serif;">
-            {{ stats.uptime_hours }}<span class="text-[14px] font-[400] text-[#777169] ml-2 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">小时</span>
+            <template v-if="uptime.days > 0">
+              {{ uptime.days }}<span class="text-[14px] font-[400] text-[#777169] ml-1 mr-2 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">天</span>
+            </template>
+            {{ uptime.hours }}<span class="text-[14px] font-[400] text-[#777169] ml-1 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">小时</span>
           </p>
         </div>
       </div>
