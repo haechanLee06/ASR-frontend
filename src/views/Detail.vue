@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDetail, updateSegmentText } from '@/api/audio'
-import { VideoPlay, VideoPause, ArrowLeft, ArrowRight, Loading, Edit } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { getDetail, updateSegmentText, updateSegmentSpeaker, splitSegment } from '@/api/audio'
+import { VideoPlay, VideoPause, ArrowLeft, ArrowRight, Loading, Edit, Switch, Scissor } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import WaveformPlayer from '@/components/WaveformPlayer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,41 +47,28 @@ const scrollToBubble = (index) => {
 // New state for player
 const isPlaying = ref(false)
 const currentPlayingId = ref(null)
-const audioElement = new Audio()
 const currentTime = ref(0)
 const duration = ref(0)
-const isDragging = ref(false) // Prevent time update conflict while dragging
 
-// Audio event listeners
-audioElement.addEventListener('timeupdate', () => {
-  if (!isDragging.value) {
-    currentTime.value = audioElement.currentTime
+const playerRefs = ref({})
+const setPlayerRef = (el, id) => {
+  if (el) {
+    playerRefs.value[id] = el
   }
-})
-
-audioElement.addEventListener('ended', () => {
-  isPlaying.value = false
-  currentTime.value = 0
-  currentPlayingId.value = null
-})
-
-audioElement.addEventListener('loadedmetadata', () => {
-  duration.value = audioElement.duration
-})
-
-const onSliderInput = (val) => {
-  isDragging.value = true
 }
 
-const onSliderChange = (val) => {
-  isDragging.value = false
-  audioElement.currentTime = val
+const onTimeUpdate = (time) => {
+  currentTime.value = time
+}
+
+const onPlayerReady = (d) => {
+  duration.value = d
 }
 
 const togglePlay = async (segment) => {
   if (!segment) return
 
-  // Sync selection with right panel
+  // Sync selection
   const index = info.value.segments.findIndex(s => s.id === segment.id)
   if (index !== -1) {
     currentId.value = index
@@ -88,48 +76,19 @@ const togglePlay = async (segment) => {
 
   // Check if we are clicking the same segment
   if (currentPlayingId.value === segment.id) {
-    if (isPlaying.value) {
-      audioElement.pause()
-      isPlaying.value = false
-    } else {
-      try {
-        await audioElement.play()
-        isPlaying.value = true
-      } catch (e) {
-        console.error("Playback failed", e)
-        isPlaying.value = false
-      }
-    }
+    isPlaying.value = !isPlaying.value
     return
   }
 
   // Switching to a new segment
-  // Stop current if playing
-  if (isPlaying.value) {
-    audioElement.pause()
+  if (currentPlayingId.value && playerRefs.value[currentPlayingId.value]) {
+    playerRefs.value[currentPlayingId.value].reset()
   }
 
-  // Reset state
   currentPlayingId.value = segment.id
   currentTime.value = 0
   duration.value = 0 
-  isPlaying.value = false // Wait for load
-
-  // Set new source
-  const audioUrl = getAudioUrl(segment.path)
-  
-  if (audioUrl) {
-    audioElement.src = audioUrl
-    try {
-      await audioElement.play()
-      isPlaying.value = true
-    } catch (e) {
-      console.error("Playback failed", e)
-      isPlaying.value = false
-    }
-  } else {
-    console.warn("No audio path for segment", segment)
-  }
+  isPlaying.value = true
 }
 
 const playPrev = () => {
@@ -168,8 +127,13 @@ const fetchDetail = async () => {
     const status = data.status || 'success' 
     
     if (status === 'success') {
-      info.value = data
-      const segs = data.segments || []
+      const segs = (data.segments || []).map(s => ({
+        ...s,
+        playbackRate: 1.0,
+        isEditing: false,
+        isSaving: false
+      }))
+      info.value = { ...data, segments: segs }
       if (segs.length > 0) {
         if (currentId.value === -1 || currentId.value === 0) {
            currentId.value = 0
@@ -237,14 +201,59 @@ const saveEdit = async (item, index) => {
   }
 }
 
+const handleSwitchSpeaker = async (item, index) => {
+  if (item.isSaving) return
+  const newSpk = item.spk === 'spk0' ? 'spk1' : 'spk0'
+  item.isSaving = true
+  try {
+    await updateSegmentSpeaker(route.params.id, index, newSpk)
+    item.spk = newSpk
+    ElMessage.success('角色已切换')
+  } catch(e) {
+    console.error(e)
+  } finally {
+    item.isSaving = false
+  }
+}
+
+const handleSplitSegment = async (item, index) => {
+  const player = playerRefs.value[item.id]
+  const offset = player ? player.getCurrentTime() : 0
+  
+  if (offset <= 0 || offset >= (item.end - item.start)) {
+    ElMessage.warning('请先在波形图上选择合适的切分位置（点击波形图定位光标）')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要在此处 (${formatDuration(offset)}) 将对话切分为两段吗？切分后将使用免 OOM 模式进行二次转录（约需几秒）。`,
+      '切分对话',
+      { confirmButtonText: '确定切分', cancelButtonText: '取消', type: 'warning' }
+    )
+    
+    // Switch to loading mode
+    recordStatus.value = 'polling'
+    errorMsg.value = ''
+    
+    await splitSegment(route.params.id, index, offset)
+    ElMessage.success('切分请求已提交，等待处理')
+    fetchDetail() // Will start polling or fetch new data and stop loading
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('切分失败')
+      console.error(e)
+      recordStatus.value = 'success' // restore view
+    }
+  }
+}
+
 onMounted(() => {
   fetchDetail()
 })
 
 onUnmounted(() => {
   stopPolling()
-  audioElement.pause()
-  audioElement.src = ''
 })
 </script>
 
@@ -274,7 +283,7 @@ onUnmounted(() => {
 
     <!-- Success State (Original Content) -->
     <div v-else class="detail-layout">
-      <!-- Left Chat Panel -->
+      <!-- Chat Panel -->
       <div class="chat-panel" ref="chatPanelRef">
         <div 
           v-for="(item, index) in info.segments" 
@@ -288,8 +297,8 @@ onUnmounted(() => {
         >
           <div class="chat-avatar">
             <el-avatar 
-              :size="40" 
-              :style="{ backgroundColor: item.spk === 'spk0' ? '#ffffff' : 'rgba(245, 242, 239, 0.8)', color: '#000', border: '1px solid #e5e5e5' }"
+              :size="42" 
+              :style="{ backgroundColor: item.spk === 'spk0' ? '#ffffff' : '#f5f2ef', color: '#000', border: '1px solid #e5e5e5' }"
             >
               {{ item.spk === 'spk0' ? 'A' : 'B' }}
             </el-avatar>
@@ -297,8 +306,36 @@ onUnmounted(() => {
           
           <div class="chat-content">
             <div class="chat-meta">
-              <span class="spk-name">{{ item.spk === 'spk0' ? '对方' : '我方' }}</span>
-              <span class="time-tag">#{{ index + 1 }}</span>
+              <template v-if="item.spk === 'spk0'">
+                <span class="spk-name">对方</span>
+                <span class="time-tag">#{{ index + 1 }}</span>
+                <div class="edit-btn-group">
+                  <div v-if="!item.isEditing" class="edit-btn-meta" @click.stop="editSegment(item)" title="编辑内容">
+                    <el-icon><Edit /></el-icon>
+                  </div>
+                  <div v-if="!item.isEditing" class="edit-btn-meta" @click.stop="handleSwitchSpeaker(item, index)" title="切换角色" :class="{ 'is-disabled': item.isSaving }">
+                    <el-icon><Switch /></el-icon>
+                  </div>
+                  <div v-if="!item.isEditing" class="edit-btn-meta" @click.stop="handleSplitSegment(item, index)" title="在此处切分">
+                    <el-icon><Scissor /></el-icon>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="edit-btn-group">
+                  <div v-if="!item.isEditing" class="edit-btn-meta" @click.stop="handleSplitSegment(item, index)" title="在此处切分">
+                    <el-icon><Scissor /></el-icon>
+                  </div>
+                  <div v-if="!item.isEditing" class="edit-btn-meta" @click.stop="handleSwitchSpeaker(item, index)" title="切换角色" :class="{ 'is-disabled': item.isSaving }">
+                    <el-icon><Switch /></el-icon>
+                  </div>
+                  <div v-if="!item.isEditing" class="edit-btn-meta" @click.stop="editSegment(item)" title="编辑内容">
+                    <el-icon><Edit /></el-icon>
+                  </div>
+                </div>
+                <span class="spk-name">我方</span>
+                <span class="time-tag">#{{ index + 1 }}</span>
+              </template>
             </div>
             <div class="chat-bubble">
               <!-- Edit Mode -->
@@ -316,44 +353,51 @@ onUnmounted(() => {
               </div>
               
               <!-- Display Mode -->
-              <div v-else class="bubble-text">
-                {{ item.text }}
-                <div class="edit-btn-wrapper" @click.stop="editSegment(item)">
-                  <el-icon class="edit-icon"><Edit /></el-icon>
-                </div>
-              </div>
-              <!-- Mini Player Controls -->
-              <div class="mini-player-controls">
-                <div class="player-icon" @click.stop="togglePlay(item)">
-                  <el-icon v-if="isPlaying && currentPlayingId === item.id"><VideoPause /></el-icon>
-                  <el-icon v-else><VideoPlay /></el-icon>
+              <div v-else class="bubble-text" @click="togglePlay(item)">
+                <div class="text-content">
+                  {{ item.text }}
                 </div>
                 
-                <el-slider 
-                  v-if="isPlaying && currentPlayingId === item.id"
-                  v-model="currentTime" 
-                  :max="duration" 
-                  :show-tooltip="false"
-                  size="small"
-                  @input="onSliderInput"
-                  @change="onSliderChange"
-                />
-                <el-slider 
-                  v-else
-                  :model-value="0" 
-                  :max="100" 
-                  :show-tooltip="false"
-                  size="small"
-                  disabled
-                />
-                
-                <div class="time-display">
-                  <span v-if="isPlaying && currentPlayingId === item.id">
-                    {{ formatDuration(currentTime) }} / {{ formatDuration(duration) }}
-                  </span>
-                  <span v-else>
-                    {{ formatDuration(item.end - item.start) }}
-                  </span>
+                <!-- Inline Waveform Player -->
+                <div class="inline-player-wrapper" @click.stop v-if="getAudioUrl(item.path)">
+                  <el-button 
+                    class="inline-play-btn" 
+                    circle
+                    @click="togglePlay(item)"
+                  >
+                    <el-icon>
+                      <VideoPause v-if="currentPlayingId === item.id && isPlaying" />
+                      <VideoPlay v-else />
+                    </el-icon>
+                  </el-button>
+                  <div class="inline-waveform">
+                    <WaveformPlayer 
+                      :ref="el => setPlayerRef(el, item.id)"
+                      :audio-url="getAudioUrl(item.path)"
+                      :is-playing="currentPlayingId === item.id && isPlaying"
+                      :playback-rate="item.playbackRate || 1.0"
+                      @update:is-playing="val => { if(currentPlayingId === item.id) isPlaying = val }"
+                      @timeupdate="val => { if(currentPlayingId === item.id) onTimeUpdate(val) }"
+                      @ready="val => { if(currentPlayingId === item.id) onPlayerReady(val) }"
+                    />
+                  </div>
+                  
+                  <div class="inline-controls">
+                    <div class="speed-control" @click.stop>
+                      <el-slider 
+                        v-model="item.playbackRate" 
+                        :min="0.5" 
+                        :max="2.0" 
+                        :step="0.5"
+                        :show-tooltip="false"
+                        size="small"
+                      />
+                      <span class="speed-label">{{ item.playbackRate }}x</span>
+                    </div>
+                    <div class="inline-time-info">
+                      {{ formatDuration(currentPlayingId === item.id ? currentTime : 0) }} / {{ formatDuration(item.end - item.start) }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -366,50 +410,7 @@ onUnmounted(() => {
         <div v-if="info.segments && info.segments.length === 0" class="empty-tip">
           暂无对话数据
         </div>
-      </div>
-
-      <!-- Right Control Panel -->
-      <div class="control-panel">
-        <div class="control-card">
-          <div class="card-header">
-            <h3>当前片段</h3>
-            <el-button 
-              type="primary" 
-              plain 
-              @click="router.push(`/transcript-check/${route.params.id}`)"
-            >
-              进入剧本模式 / 准备生成总结
-            </el-button>
-          </div>
-          
-          <div v-if="currentSegment" class="current-info">
-            <div class="large-text-display">
-              {{ currentSegment.text }}
-            </div>
-            
-            <div class="audio-visualizer-placeholder">
-              <!-- Placeholder for waveform -->
-              <div class="wave-bar" v-for="n in 20" :key="n" :style="{ height: Math.random() * 40 + 10 + 'px' }"></div>
-            </div>
-            
-            <div class="player-controls">
-              <div class="buttons">
-                <el-button circle :icon="ArrowLeft" @click="playPrev" :disabled="currentId <= 0" />
-                <el-button circle type="primary" size="large" @click="togglePlay(currentSegment)">
-                  <el-icon size="24">
-                    <VideoPause v-if="isPlaying && currentPlayingId === currentSegment.id" />
-                    <VideoPlay v-else />
-                  </el-icon>
-                </el-button>
-                <el-button circle :icon="ArrowRight" @click="playNext" :disabled="!info.segments || currentId >= info.segments.length - 1" />
-              </div>
-            </div>
-          </div>
-          
-          <div v-else class="no-selection">
-            请选择左侧对话片段
-          </div>
-        </div>
+        <!-- Padding for footer removed since footer is gone -->
       </div>
     </div>
   </div>
@@ -420,6 +421,7 @@ onUnmounted(() => {
   display: flex;
   height: 100%;
   gap: 20px;
+  position: relative; /* 确保底部播放器相对于此容器定位 */
 }
 
 .full-loading, .full-error {
@@ -449,20 +451,24 @@ onUnmounted(() => {
 .chat-panel {
   flex: 1;
   background-color: #fff;
-  border-radius: 8px;
-  padding: 20px;
+  padding: 40px 10%; /* Center the chat stream */
   overflow-y: auto;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  position: relative;
+}
+
+/* Adjust scrollbar for chat-panel */
+.chat-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-panel::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.05);
+  border-radius: 3px;
 }
 
 .chat-row {
   display: flex;
-  margin-bottom: 24px;
-  transition: opacity 0.2s;
-}
-
-.chat-row:hover .timestamp-hover {
-  opacity: 1;
+  margin-bottom: 32px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .row-left {
@@ -474,14 +480,15 @@ onUnmounted(() => {
 }
 
 .chat-avatar {
-  margin: 0 12px;
+  margin: 0 16px;
+  flex-shrink: 0;
 }
 
 .chat-content {
   max-width: 70%;
   display: flex;
   flex-direction: column;
-  position: relative; /* Anchor for timestamp */
+  position: relative;
 }
 
 .row-left .chat-content {
@@ -493,169 +500,175 @@ onUnmounted(() => {
 }
 
 .chat-meta {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: #777169;
   display: flex;
   gap: 8px;
 }
 
+.row-active .chat-bubble {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08); /* More subtle active state */
+  border-color: #000;
+}
+
 .chat-bubble {
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 16px 20px;
+  border-radius: 16px;
   line-height: 1.6;
   font-size: 15px;
   position: relative;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 200px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  border: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.chat-bubble:hover {
+  transform: translateY(-1px);
 }
 
 .row-left .chat-bubble {
   background-color: #ffffff;
-  color: #000000;
   border-top-left-radius: 4px;
-  box-shadow: var(--shadow-outline), var(--shadow-inset);
-  border: none;
 }
 
 .row-right .chat-bubble {
-  background-color: rgba(245, 242, 239, 0.8);
-  color: #000000;
+  background-color: #f5f2ef;
   border-top-right-radius: 4px;
-  box-shadow: var(--shadow-warm), var(--shadow-inset);
-  border: none;
 }
 
 .row-active .chat-bubble {
-  box-shadow: 0 0 0 2px #000000, var(--shadow-inset);
+  border-color: #000;
+  background-color: #fff;
 }
 
-/* Hybrid Bubble Components */
-.bubble-text {
-  word-break: break-word;
+.text-content {
   position: relative;
-  padding-bottom: 2px;
+  margin-bottom: 12px;
+}
+
+.inline-player-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.inline-play-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.inline-play-btn:hover {
+  background: var(--color-primary-light);
+}
+
+.inline-waveform {
+  flex: 1;
+  min-width: 120px;
+}
+
+.inline-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 2px 10px;
+  border-radius: 6px;
+}
+
+:deep(.el-slider) {
+  flex: 1;
+  margin-right: 6px; /* 为滑块停留在最大值时留出空间，防止遮挡文字 */
+  --el-slider-main-bg-color: #000;
+  --el-slider-runway-bg-color: #e5e5e5;
+  --el-slider-stop-bg-color: #fff;
+}
+
+.speed-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #000;
+  min-width: 24px;
+}
+
+.edit-btn-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: #c0c4cc;
+  transition: all 0.2s;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.row-left .edit-btn-meta { margin-left: 8px; }
+.row-right .edit-btn-meta { margin-right: 8px; }
+
+.edit-btn-meta:hover {
+  color: #000;
+  background: #f0f0f0;
+}
+
+.edit-btn-meta span {
+  font-size: 11px;
+}
+
+.edit-btn-group {
+  display: flex;
+  gap: 2px;
+}
+
+.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-btn-wrapper { display: none; } /* Hide old hover button */
+
+.inline-time-info {
+  font-size: 10px;
+  color: #777169;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .edit-btn-wrapper {
   position: absolute;
-  right: -8px;
-  bottom: -6px;
+  right: 12px;
+  bottom: 8px;
   cursor: pointer;
-  opacity: 0.3;
-  transition: opacity 0.2s, color 0.2s;
-  padding: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-bubble:hover .edit-btn-wrapper {
+  opacity: 0.5;
 }
 
 .edit-btn-wrapper:hover {
-  opacity: 1;
-  color: var(--color-primary);
+  opacity: 1 !important;
 }
 
-.row-right .edit-btn-wrapper:hover {
-  color: #fff;
-}
-
-.bubble-edit-area {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 200px;
-}
-
-.edit-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.edit-input :deep(.el-textarea__inner) {
-  font-family: inherit;
-  font-size: 15px;
-}
-
-.row-right .edit-input :deep(.el-textarea__inner) {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.row-right .edit-input :deep(.el-textarea__inner:focus) {
-  border-color: #fff;
-}
-
-.mini-player-controls {
-  display: flex;
-  align-items: center;
-  padding: 4px 0;
-  margin-top: 8px;
-  border-top: 1px solid rgba(0,0,0,0.05);
-}
-
-.row-right .mini-player-controls {
-  border-top-color: rgba(255,255,255,0.2);
-}
-
-.player-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  color: var(--color-primary);
-  cursor: pointer;
-  width: 24px;
-  height: 24px;
-}
-.mini-player-controls :deep(.el-slider) {
-  --el-slider-main-bg-color: var(--color-primary);
-  --el-slider-runway-bg-color: #dcdfe6;
-  --el-slider-button-size: 12px;
-  --el-slider-height: 4px;
-  margin-left: 10px;
-  margin-right: 10px;
-}
-
-.mini-player-controls :deep(.el-slider__button) {
-  border: 2px solid var(--color-primary);
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.row-left .mini-player-controls :deep(.el-slider) {
-  --el-slider-main-bg-color: var(--color-primary);
-}
-
-.row-right .mini-player-controls :deep(.el-slider__runway) {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.row-right .mini-player-controls :deep(.el-slider__bar) {
-  background-color: var(--color-primary);
-}
-
-.row-right .mini-player-controls :deep(.el-slider__button) {
-  border-color: var(--color-primary);
-  background-color: #ffffff;
-}
-
-.time-display {
-  font-size: 11px;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  min-width: 60px;
-  text-align: right;
-}
-
-.row-right .time-display,
-.row-right .player-icon {
-  color: var(--text-secondary);
-}
-
-/* Timestamp Hover */
 .timestamp-hover {
   position: absolute;
   bottom: -20px;
@@ -663,17 +676,10 @@ onUnmounted(() => {
   color: #909399;
   opacity: 0;
   transition: opacity 0.2s;
-  white-space: nowrap;
 }
 
-.row-left .timestamp-hover {
-  right: 0;
-}
-
-.row-right .timestamp-hover {
-  left: 0;
-  color: rgba(0, 0, 0, 0.4);
-}
+.row-left .timestamp-hover { right: 0; }
+.row-right .timestamp-hover { left: 0; }
 
 .empty-tip {
   text-align: center;

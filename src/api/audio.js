@@ -24,6 +24,15 @@ export const updateSegmentText = (recordId, segmentIndex, text) => {
   return request.put(`/record/${recordId}/segment/${segmentIndex}`, { text })
 }
 
+export const updateSegmentSpeaker = (recordId, segmentIndex, speaker) => {
+  return request.put(`/record/${recordId}/segment/${segmentIndex}/speaker`, { speaker })
+}
+
+export const splitSegment = (recordId, segmentIndex, splitOffset) => {
+  // Increase timeout since secondary transcription takes a few seconds
+  return request.post(`/record/${recordId}/segment/${segmentIndex}/split`, { split_offset: splitOffset }, { timeout: 120000 })
+}
+
 export const generateSummary = (id) => {
   return request.post(`/api/summary/${id}`, {}, { timeout: 300000 })
 }
