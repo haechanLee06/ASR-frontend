@@ -46,3 +46,7 @@ export const getDashboardKeywords = () => {
 export const getDashboardRecentRecords = () => {
   return request.get('/api/dashboard/recent_records')
 }
+
+export const sendHeartbeat = () => {
+  return request.post('/api/system/heartbeat')
+}

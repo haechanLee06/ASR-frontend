@@ -3,178 +3,305 @@ import { onMounted, ref, computed } from 'vue'
 import request from '@/api/request'
 import { deleteRecord } from '@/api/audio'
 import { useRouter } from 'vue-router'
-import { ElMessageBox, ElMessage } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
-const tableData = ref([])
-const loading = ref(false)
-const selectedRows = ref([])
+const rawData = ref([])
+const loading = ref(true)
+const selectedIds = ref(new Set())
 const router = useRouter()
 
 async function fetchHistory() {
   loading.value = true
   try {
     const res = await request.get('/history')
-    tableData.value = res?.data || []
+    rawData.value = res?.data || []
   } finally {
-    loading.value = false
+    // 微弱的延迟，展现骨架屏过渡效果
+    setTimeout(() => {
+      loading.value = false
+    }, 400)
   }
 }
 
 onMounted(fetchHistory)
 
-const handleSelectionChange = (val) => {
-  selectedRows.value = val
+const isAllSelected = computed(() => rawData.value.length > 0 && selectedIds.value.size === rawData.value.length)
+const isIndeterminate = computed(() => selectedIds.value.size > 0 && selectedIds.value.size < rawData.value.length)
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedIds.value.clear()
+  } else {
+    rawData.value.forEach(row => {
+      selectedIds.value.add(row.id || row.record_id)
+    })
+  }
 }
 
-const handleBatchDelete = () => {
-  if (selectedRows.value.length === 0) return
+function toggleRow(id) {
+  if (selectedIds.value.has(id)) {
+    selectedIds.value.delete(id)
+  } else {
+    selectedIds.value.add(id)
+  }
+}
 
-  ElMessageBox.confirm(
-    `确定要删除选中的 ${selectedRows.value.length} 条记录吗？此操作不可恢复。`,
-    '批量删除',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(async () => {
+const showActionBar = computed(() => selectedIds.value.size > 0)
+const isDeleting = ref(false)
+
+async function handleBatchDelete() {
+  if (selectedIds.value.size === 0) return
+  isDeleting.value = true
+  try {
+    const ids = Array.from(selectedIds.value)
+    await Promise.all(ids.map(id => deleteRecord(id)))
+    ElMessage.success('案卷清理完毕')
+    selectedIds.value.clear()
+    await fetchHistory()
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('清理异常')
+    await fetchHistory()
+  } finally {
+    isDeleting.value = false
+  }
+}
+
+async function handleDeleteRow(row) {
+  const id = row?.id || row?.record_id
+  if (!id) return
+  
+  ElMessageBox.confirm('这将会永久销毁此条案卷及相关音频，是否继续？', '防误删确认', {
+    confirmButtonText: '强制销毁',
+    cancelButtonText: '保留',
+    type: 'warning',
+  }).then(async () => {
     try {
-      const ids = selectedRows.value.map(row => row.id || row.record_id)
-      await Promise.all(ids.map(id => deleteRecord(id)))
-      ElMessage.success('批量删除成功')
-      selectedRows.value = [] // Clear selection
+      await deleteRecord(id)
+      ElMessage.success('已销毁')
       fetchHistory()
-    } catch (e) {
-      console.error(e)
-      ElMessage.error('批量删除过程中出现错误')
-      fetchHistory() // Refresh anyway
-    }
+    } catch (e) {}
   }).catch(() => {})
 }
 
-const goDetail = (row) => {
+function goDetail(row) {
   const id = row?.id || row?.record_id
   if (id) {
     router.push(`/detail/${id}`)
   }
 }
 
-const handleDelete = (row) => {
-  const id = row?.id || row?.record_id
-  if (!id) return
-
-  ElMessageBox.confirm(
-    '确定要删除该记录及所有音频文件吗？此操作不可恢复。',
-    '警告',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(async () => {
-    try {
-      await deleteRecord(id)
-      ElMessage.success('删除成功')
-      fetchHistory()
-    } catch (e) {
-      console.error(e)
-    }
-  }).catch(() => {
-    // Cancelled
-  })
-}
-
-const getStatusType = (status) => {
-  if (!status) return 'info'
-  const s = String(status).toLowerCase()
-  if (s === 'success' || s.includes('完成')) return 'success'
-  if (s === 'failed' || s.includes('fail') || s.includes('error') || s.includes('失败')) return 'danger'
-  if (s === 'processing' || s === 'pending' || s.includes('loading') || s.includes('处理中')) return 'primary'
-  return 'info'
-}
-
 const getStatusLabel = (status) => {
   if (!status) return '未知'
   const map = {
-    pending: '排队中',
-    processing: '处理中',
-    success: '已完成',
-    failed: '失败'
+    pending: '排队进入序列',
+    processing: '系统转写中',
+    success: '已封卷存档',
+    failed: '解析失败'
   }
   return map[status] || status
+}
+
+const getStatusPillClass = (status) => {
+  const base = 'px-3 py-1 rounded-full text-[11px] font-medium border'
+  if (!status) return `${base} bg-slate-50 text-slate-600 border-slate-200/60 shadow-xs-inset`
+  const s = String(status).toLowerCase()
+  if (s === 'success' || s.includes('完成')) {
+    return `${base} bg-emerald-50 text-emerald-700 border-emerald-200/60 shadow-xs-inset`
+  }
+  if (s === 'failed' || s.includes('fail') || s.includes('error') || s.includes('失败')) {
+    return `${base} bg-rose-50 text-rose-700 border-rose-200/60 shadow-xs-inset`
+  }
+  if (s === 'processing' || s === 'pending' || s.includes('loading') || s.includes('处理中')) {
+    return `${base} bg-[#fcf9f5] text-[#8c6b45] border-[#e8dccb] shadow-xs-inset`
+  }
+  return `${base} bg-slate-50 text-slate-600 border-slate-200/60 shadow-xs-inset`
 }
 </script>
 
 <template>
-  <div class="page-container">
-    <el-card shadow="never" class="history-card">
-      <template #header>
-        <div class="card-header">
-          <div class="header-left">
-            <span>历史记录</span>
-            <el-button 
-              type="danger" 
-              plain 
-              size="small" 
-              :disabled="selectedRows.length === 0"
-              @click="handleBatchDelete"
-              style="margin-left: 16px"
-            >
-              批量删除
-            </el-button>
-          </div>
-          <el-button type="primary" link @click="fetchHistory">刷新</el-button>
-        </div>
-      </template>
+  <div class="relative min-h-[600px] flex flex-col pt-2 pb-24">
+    <!-- Header -->
+    <div class="flex justify-between items-end mb-8 px-2">
+      <div>
+        <h1 class="text-[32px] font-[300] tracking-[-0.96px] text-[#000000] mb-1" style="font-family: 'Waldenburg', sans-serif;">所有案卷</h1>
+        <p class="text-[14px] text-[#777169] tracking-[0.16px]">管理与回顾过去的语音处理记录</p>
+      </div>
       
-      <el-table 
-        :data="tableData" 
-        v-loading="loading" 
-        style="width: 100%"
-        :header-cell-style="{ background: '#f5f7fa', color: '#606266' }"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="55" />
-        <el-table-column label="上传时间" width="200">
-          <template #default="{ row }">
-            {{ row.upload_time || row.created_at }}
-          </template>
-        </el-table-column>
-        <el-table-column label="原始文件名" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.original_filename || row.filename }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="duration" label="时长" width="120" align="center" />
-        <el-table-column prop="status" label="状态" width="120" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="goDetail(row)">查看详情</el-button>
-            <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <button @click="fetchHistory" class="flex items-center gap-2 text-[13px] text-[#777169] hover:text-black transition-colors rounded-full px-4 py-2 hover:bg-[#f5f5f5]">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11A8.1 8.1 0 004.5 9M4 22v-6h6M4 13a8.1 8.1 0 0015.5 2m.5 6v-6h-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>刷新列表</span>
+      </button>
+    </div>
+
+    <!-- Table Container -->
+    <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] overflow-x-auto relative">
+      <div class="min-w-[808px]">
+        <!-- Custom Header Row -->
+        <div class="grid grid-cols-[64px_minmax(200px,1fr)_120px_140px_180px_120px] items-center px-4 py-4 border-b border-[#e5e5e5] bg-[#fdfdfd]">
+          <div class="flex items-center justify-center">
+             <input type="checkbox" :checked="isAllSelected" :data-indeterminate="isIndeterminate" @change="toggleSelectAll" class="minimal-checkbox" />
+          </div>
+          <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase">File Name</span>
+          <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase text-center">Duration</span>
+          <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase text-center">Status</span>
+          <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase">Upload Date</span>
+          <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase text-right mr-6">Actions</span>
+        </div>
+
+        <!-- Loading Skeleton -->
+        <transition name="fade" mode="out-in">
+          <div v-if="loading" class="flex flex-col">
+            <div v-for="i in 5" :key="i" class="grid grid-cols-[64px_minmax(200px,1fr)_120px_140px_180px_120px] items-center px-4 py-5 border-b border-[#f5f5f5] last:border-0">
+              <div class="flex justify-center"><div class="w-4 h-4 rounded-[4px] bg-[#f5f5f5] animate-pulse"></div></div>
+              <div class="pr-6"><div class="h-4 bg-[#f5f5f5] rounded block w-3/4 animate-pulse"></div></div>
+              <div class="flex justify-center"><div class="h-4 bg-[#f5f5f5] rounded block w-12 animate-pulse"></div></div>
+              <div class="flex justify-center"><div class="h-6 bg-[#f5f5f5] rounded-full block w-16 animate-pulse"></div></div>
+              <div><div class="h-4 bg-[#f5f5f5] rounded block w-24 animate-pulse"></div></div>
+              <div class="flex justify-end gap-2 pr-6"><div class="h-4 bg-[#f5f5f5] rounded block w-12 animate-pulse"></div></div>
+            </div>
+          </div>
+
+          <div v-else-if="rawData.length === 0" class="flex flex-col items-center justify-center py-24">
+            <svg class="w-12 h-12 text-[#e5e5e5] mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0121 9.414V19a2 2 0 01-2 2z"/></svg>
+            <span class="text-[14px] text-[#777169] tracking-[0.16px]">深空宁静，暂无任何案卷记录</span>
+          </div>
+
+          <!-- Data Rows -->
+          <div v-else class="flex flex-col">
+            <div v-for="row in rawData" :key="row.id || row.record_id" 
+                 class="grid grid-cols-[64px_minmax(200px,1fr)_120px_140px_180px_120px] items-center px-4 py-4 border-b border-[#f5f5f5] last:border-0 hover:bg-[#fcfbf9] transition-colors group cursor-pointer"
+                 @click.self="goDetail(row)">
+                 
+              <!-- Checkbox -->
+              <div class="flex items-center justify-center relative">
+                <div class="absolute inset-0 cursor-pointer" @click.stop="toggleRow(row.id || row.record_id)"></div>
+                <input type="checkbox" :checked="selectedIds.has(row.id || row.record_id)" class="minimal-checkbox pointer-events-none" />
+              </div>
+
+              <!-- FileName -->
+              <div class="pr-6 flex flex-col min-w-0" @click="goDetail(row)">
+                <span class="text-[15px] font-medium text-black truncate tracking-[-0.3px]">{{ row.original_filename || row.filename }}</span>
+              </div>
+
+              <!-- Duration -->
+              <div class="flex justify-center text-[14px] text-[#777169] font-medium tracking-[0.16px]" style="font-family: 'Inter', sans-serif;" @click="goDetail(row)">
+                {{ row.duration || '--' }}
+              </div>
+
+              <!-- Status Pill -->
+              <div class="flex justify-center" @click="goDetail(row)">
+                <span :class="getStatusPillClass(row.status)">{{ getStatusLabel(row.status) }}</span>
+              </div>
+
+              <!-- Date -->
+              <div class="text-[13px] text-[#777169] tracking-[0.16px]" style="font-family: 'Inter', sans-serif;" @click="goDetail(row)">
+                {{ row.upload_time || row.created_at || '--' }}
+              </div>
+
+              <!-- Actions -->
+              <div class="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity relative items-center pr-4">
+                <button @click.stop="goDetail(row)" class="text-[13px] font-medium text-[#777169] hover:text-black hover:underline transition-colors tracking-[0.16px]">核阅</button>
+                <div class="w-px h-3 bg-[#e5e5e5]"></div>
+                <button @click.stop="handleDeleteRow(row)" class="text-[13px] font-medium text-rose-500/80 hover:text-rose-600 hover:underline transition-colors tracking-[0.16px]">删除</button>
+              </div>
+            </div>
+          </div>
+        </transition>
+      </div>
+    </div>
+
+    <!-- Floating Batch Action Bar -->
+    <transition name="slide-up">
+      <div v-if="showActionBar" 
+           class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[rgba(255,255,255,0.85)] backdrop-blur-xl border border-[#e5e5e5] rounded-full px-6 py-3 flex items-center gap-6 shadow-[0_8px_30px_rgb(0,0,0,0.08)] z-50 transition-all">
+        <div class="flex items-center gap-2">
+           <div class="w-6 h-6 rounded-full bg-[#f5f2ef] flex items-center justify-center text-black font-semibold text-[13px]">
+             {{ selectedIds.size }}
+           </div>
+           <span class="text-[14px] font-medium text-black tracking-[0.16px]">项已选定</span>
+        </div>
+        <div class="w-px h-5 bg-[#e5e5e5]"></div>
+        <button @click="handleBatchDelete" 
+                class="flex items-center gap-1.5 text-[14px] font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                :class="{ 'opacity-50 cursor-not-allowed': isDeleting }">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          {{ isDeleting ? '清理中...' : '销毁选定案卷' }}
+        </button>
+      </div>
+    </transition>
   </div>
 </template>
 
 <style scoped>
-.history-card {
+.minimal-checkbox {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #d4d4d4;
+  border-radius: 4px;
+  background-color: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  margin: 0;
+}
+
+.minimal-checkbox:hover {
+  border-color: #000000;
+}
+
+.minimal-checkbox:checked {
+  background-color: #000000;
+  border-color: #000000;
+}
+
+.minimal-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+}
+
+/* Semi-selected state styling */
+.minimal-checkbox[data-indeterminate="true"] {
+  background-color: #000000;
+  border-color: #000000;
+}
+.minimal-checkbox[data-indeterminate="true"]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 1.5px;
+  background-color: white;
   border: none;
 }
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 500;
+
+/* Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
 }
-.header-left {
-  display: flex;
-  align-items: center;
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 20px);
 }
 </style>

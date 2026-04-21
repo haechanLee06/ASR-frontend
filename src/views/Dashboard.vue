@@ -1,9 +1,13 @@
 <script setup>
-import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch, onActivated } from 'vue'
+
+defineOptions({
+  name: 'Dashboard'
+})
 import { storeToRefs } from 'pinia'
 import { useTaskStore } from '@/stores/task'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { uploadAudio, getDetail, deleteRecord, getDashboardStats, getDashboardKeywords, getDashboardRecentRecords, getDashboardAmbient } from '@/api/audio'
+import { uploadAudio, getDetail, deleteRecord, getDashboardStats, getDashboardKeywords, getDashboardRecentRecords, getDashboardAmbient, getDashboardHealth } from '@/api/audio'
 import { useRouter } from 'vue-router'
 import { UploadFilled, View, Loading, Delete } from '@element-plus/icons-vue'
 import DashboardStatusBar from '@/components/DashboardStatusBar.vue'
@@ -21,6 +25,20 @@ const uptime = ref({ days: 0, hours: 0 })
 const fileInput = ref(null)
 const isUploading = ref(false)
 const isDragging = ref(false)
+const isPageLoading = ref(true)
+
+const ambientData = ref({
+  location: '未知地区',
+  weather: '无法获取',
+  temperature: '--',
+  uptime_days: '--',
+  uptime_hours: '--',
+})
+
+const healthData = ref({
+  asr_online: false,
+  llm_online: false,
+})
 
 const activeTask = computed(() => {
   return tasks.value.find(t => ['pending', 'processing'].includes(t.status))
@@ -181,21 +199,39 @@ const fetchDashboardStats = async () => {
         total_transcribed: res.data.total_transcribed || 0,
         total_summarized: res.data.total_summarized || 0
       }
+      uptime.value = {
+        days: res.data.uptime_days || 0,
+        hours: res.data.uptime_hours || 0
+      }
     }
   } catch (error) {
     console.error('Failed to load dashboard stats:', error)
   }
+}
 
-  try {
-    const ambRes = await getDashboardAmbient()
-    if (ambRes?.data) {
-      uptime.value = {
-        days: ambRes.data.uptime_days || 0,
-        hours: ambRes.data.uptime_hours || 0
-      }
+const fetchAmbientAndHealth = async () => {
+  const [ambRes, healthRes] = await Promise.allSettled([
+    getDashboardAmbient(),
+    getDashboardHealth()
+  ])
+
+  if (ambRes.status === 'fulfilled' && ambRes.value?.data) {
+    const d = ambRes.value.data
+    ambientData.value = {
+      location: d.location ?? '未知地区',
+      weather: d.weather ?? '无法获取',
+      temperature: d.temperature ?? '--',
+      uptime_days: d.uptime_days ?? '--',
+      uptime_hours: d.uptime_hours ?? '--',
     }
-  } catch (error) {
-    console.error('Failed to load dashboard ambient info:', error)
+  }
+
+  if (healthRes.status === 'fulfilled' && healthRes.value?.data) {
+    const d = healthRes.value.data
+    healthData.value = {
+      asr_online: !!d.asr_online,
+      llm_online: !!d.llm_online,
+    }
   }
 }
 
@@ -312,9 +348,24 @@ const fetchDashboardThree = async () => {
   }
 }
 
+const initDashboardData = async () => {
+  isPageLoading.value = true
+  
+  // 并行执行所有初始化请求
+  await Promise.allSettled([
+    fetchDashboardStats(),
+    fetchDashboardThree(),
+    fetchAmbientAndHealth()
+  ])
+  
+  // 模拟一个微小的延迟以增强转场视觉效果 (可选)
+  setTimeout(() => {
+    isPageLoading.value = false
+  }, 400)
+}
+
 onMounted(() => {
-  fetchDashboardStats()
-  fetchDashboardThree()
+  initDashboardData()
   // Restart polling if there are active tasks
   pollTimer = setInterval(checkStatus, 1000)
   checkStatus()
@@ -344,6 +395,17 @@ onMounted(() => {
   }, 100)
 })
 
+let isFirstLoad = true
+onActivated(() => {
+  if (isFirstLoad) {
+    isFirstLoad = false
+    return
+  }
+  // 静默刷新数据（不触发 isPageLoading 全屏遮罩）
+  fetchDashboardStats()
+  fetchDashboardThree()
+})
+
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (fakeProgressInterval) clearInterval(fakeProgressInterval)
@@ -364,10 +426,34 @@ const goTranscript = (row) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6">
+  <div class="relative" :class="{ 'h-[calc(100vh-130px)] overflow-hidden': isPageLoading, 'min-h-[600px]': !isPageLoading }">
+    <!-- 全屏加载覆盖层 -->
+    <transition name="fade">
+      <div v-if="isPageLoading" 
+           class="absolute inset-0 z-[100] bg-[rgba(255,255,255,0.9)] backdrop-blur-md flex flex-col items-center justify-center rounded-[24px]">
+        <div class="flex flex-col items-center -mt-20"> <!-- 向上微调，视觉上更居中 -->
+          <div class="relative w-16 h-16 mb-8">
+            <svg class="w-full h-full text-[#e5e5e5] animate-spin" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="70 200" stroke-linecap="round"/>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="w-3 h-3 bg-black rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <h2 class="text-[20px] font-[300] tracking-[0.05em] text-black mb-2" style="font-family: 'Waldenburg', sans-serif;">加载工作台中，请稍等</h2>
+          <p class="text-[13px] text-[#777169] tracking-[0.16px] animate-pulse">正在调度 Paraformer 与 Qwen 引擎...</p>
+        </div>
+      </div>
+    </transition>
+
+    <div class="flex flex-col gap-6" :class="{ 'opacity-0': isPageLoading, 'transition-opacity duration-1000': true }">
 
     <!-- 区块一：顶部环境舱 -->
-    <DashboardStatusBar />
+    <DashboardStatusBar 
+      :ambient-data="ambientData" 
+      :health-data="healthData" 
+      :loading="isPageLoading" 
+    />
 
     <!-- ══ 区块二：数据面板与上传 ══ -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -430,7 +516,7 @@ const goTranscript = (row) => {
         <div class="absolute inset-x-0 bottom-0 h-32 opacity-[0.03] pointer-events-none" 
              style="background-image: repeating-linear-gradient(90deg, #4e3217 0, #4e3217 1px, transparent 1px, transparent 8px); mask-image: linear-gradient(to top, black, transparent);"></div>
 
-        <h3 class="text-[18px] font-[400] text-black mb-6 tracking-[0.16px] relative z-10">语音案卷处理台</h3>
+        <h3 class="text-[18px] font-[400] text-black mb-6 tracking-[0.16px] relative z-10">语音处理台</h3>
 
         <input ref="fileInput" type="file" accept="audio/*" class="hidden" @change="handleFileChange" />
 
@@ -535,6 +621,7 @@ const goTranscript = (row) => {
 
     </div>
   </div>
+</div>
 </template>
 
 <style scoped>
@@ -551,6 +638,17 @@ const goTranscript = (row) => {
   padding-top: 32px;
   min-height: calc(100vh - 60px);
   gap: 0;
+}
+
+/* 渐变过渡 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
 

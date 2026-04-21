@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ArrowDown, Odometer, List, UserFilled } from '@element-plus/icons-vue'
+import { sendHeartbeat } from '@/api/audio'
 
 const router = useRouter()
 const route = useRoute()
@@ -23,6 +24,27 @@ function handleLogout() {
   userStore.logout()
   router.push('/login')
 }
+
+// ─── 活跃时长累计心跳 ────────────────────────────────────────────────────────
+let heartbeatTimer = null
+onMounted(() => {
+  // 首次进入立即触发
+  if (userStore.token) {
+    sendHeartbeat().catch(() => {})
+  }
+  // 每 30 秒上报一次存活，后端据此更新 session.end_time
+  heartbeatTimer = setInterval(() => {
+    if (userStore.token) {
+      sendHeartbeat().catch(() => {})
+    }
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+  }
+})
 </script>
 
 <template>
@@ -91,7 +113,11 @@ function handleLogout() {
       <!-- Main Content (Workspace) -->
       <main class="flex-1 overflow-y-auto w-full relative">
           <div class="w-full h-full p-6 md:p-8">
-            <RouterView />
+            <router-view v-slot="{ Component }">
+              <keep-alive include="Dashboard">
+                <component :is="Component" />
+              </keep-alive>
+            </router-view>
           </div>
         </main>
       </div>
