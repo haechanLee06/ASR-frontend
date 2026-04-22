@@ -19,6 +19,9 @@ const taskStore = useTaskStore()
 const { tasks } = storeToRefs(taskStore)
 let pollTimer = null
 
+// Session start time to track "NEW" records
+const sessionStartTime = ref(Date.now())
+
 // ─── 区块二：数据速览 & 文件上传 ────────────────────────────────────────────
 const stats = ref({ total_transcribed: 0, total_summarized: 0 })
 const uptime = ref({ days: 0, hours: 0 })
@@ -240,10 +243,24 @@ const keywords = ref([])
 const recentRecords = ref([])
 
 const getStatusClass = (status) => {
-  if (status === 'success') return 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20'
-  if (['processing', 'pending'].includes(status)) return 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20'
-  if (status === 'failed') return 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/20'
-  return 'bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-600/20'
+  if (status === 'success') return 'bg-emerald-50/50 text-emerald-600/80 border-emerald-100'
+  if (['processing', 'pending'].includes(status)) return 'bg-amber-50/50 text-amber-600/80 border-amber-100'
+  if (status === 'failed') return 'bg-rose-50/50 text-rose-600/80 border-rose-100'
+  return 'bg-slate-50/50 text-slate-600/80 border-slate-100'
+}
+
+const isNewRecord = (record) => {
+  if (!record.upload_time) return false
+  // 核心修复：后端传来的 ISO 字符串如果是 UTC 但没带 Z，JS 会误认。
+  // 我们手动补上 Z 确保其作为绝对 UTC 时间解析
+  let timeStr = record.upload_time
+  if (!timeStr.includes('Z') && !timeStr.includes('+')) {
+    timeStr += 'Z'
+  }
+  const uploadTime = new Date(timeStr).getTime()
+  const now = Date.now()
+  // 逻辑：最近 1 小时内上传的，或者本次会话开启后上传的
+  return uploadTime > (now - 60 * 60 * 1000) || uploadTime > (sessionStartTime.value - 5000)
 }
 
 // ─── ECharts 词云实例与配置 ──────────────────────────────────────────────
@@ -450,6 +467,8 @@ const goTranscript = (row) => {
 
     <!-- 区块一：顶部环境舱 -->
     <DashboardStatusBar 
+      class="animate-fade-in"
+      style="animation-delay: 0.1s"
       :ambient-data="ambientData" 
       :health-data="healthData" 
       :loading="isPageLoading" 
@@ -461,60 +480,88 @@ const goTranscript = (row) => {
       <!-- 左侧：数据速览 -->
       <div class="col-span-1 flex flex-col gap-6">
         <!-- 卡片 1 -->
-        <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] p-6 flex flex-col justify-between flex-1 transition-shadow hover:shadow-subtle-elevate cursor-default">
-          <div class="flex items-center justify-between">
-            <span class="text-[14px] font-[400] text-[#777169] tracking-[0.16px]">累计转写音频</span>
-            <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center">
-               <svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0121 9.414V19a2 2 0 01-2 2z"/>
-               </svg>
-            </div>
+        <div class="premium-card p-6 flex flex-col justify-between flex-1 animate-fade-in" style="animation-delay: 0.2s">
+          <div v-if="isPageLoading" class="flex flex-col gap-4">
+             <div class="flex justify-between items-center"><div class="w-24 h-4 skeleton-pulse rounded"></div><div class="w-10 h-10 skeleton-pulse rounded-full"></div></div>
+             <div class="w-16 h-10 skeleton-pulse rounded mt-2"></div>
           </div>
-          <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4" style="font-family: 'Waldenburg', sans-serif;">{{ stats.total_transcribed }}</p>
+          <template v-else>
+            <div class="flex items-center justify-between">
+              <span class="text-[14px] font-[400] text-[#777169] tracking-[0.16px]">累计转写音频</span>
+              <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center">
+                 <svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0121 9.414V19a2 2 0 01-2 2z"/>
+                 </svg>
+              </div>
+            </div>
+            <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4" style="font-family: 'Waldenburg', sans-serif;">{{ stats.total_transcribed }}</p>
+          </template>
         </div>
 
         <!-- 卡片 2 -->
-        <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] p-6 flex flex-col justify-between flex-1 transition-shadow hover:shadow-subtle-elevate cursor-default">
-          <div class="flex items-center justify-between">
-            <span class="text-[14px] font-[400] text-[#777169] tracking-[0.16px]">深度总结生成</span>
-            <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center">
-               <svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                 <rect x="4" y="4" width="16" height="16" rx="2" stroke-width="1.8"/>
-                 <rect x="9" y="9" width="6" height="6" rx="1" stroke-width="1.8"/>
-                 <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" stroke-width="1.8" stroke-linecap="round"/>
-               </svg>
-            </div>
+        <div class="premium-card p-6 flex flex-col justify-between flex-1 animate-fade-in" style="animation-delay: 0.3s">
+          <div v-if="isPageLoading" class="flex flex-col gap-4">
+             <div class="flex justify-between items-center"><div class="w-24 h-4 skeleton-pulse rounded"></div><div class="w-10 h-10 skeleton-pulse rounded-full"></div></div>
+             <div class="w-16 h-10 skeleton-pulse rounded mt-2"></div>
           </div>
-          <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4" style="font-family: 'Waldenburg', sans-serif;">{{ stats.total_summarized }}</p>
+          <template v-else>
+            <div class="flex items-center justify-between">
+              <span class="text-[14px] font-[400] text-[#777169] tracking-[0.16px]">深度总结生成</span>
+              <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center">
+                 <svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                   <rect x="4" y="4" width="16" height="16" rx="2" stroke-width="1.8"/>
+                   <rect x="9" y="9" width="6" height="6" rx="1" stroke-width="1.8"/>
+                   <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" stroke-width="1.8" stroke-linecap="round"/>
+                 </svg>
+              </div>
+            </div>
+            <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4" style="font-family: 'Waldenburg', sans-serif;">{{ stats.total_summarized }}</p>
+          </template>
         </div>
 
         <!-- 卡片 3 -->
-        <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] p-6 flex flex-col justify-between flex-1 transition-shadow hover:shadow-subtle-elevate cursor-default">
-          <div class="flex items-center justify-between">
-            <span class="text-[14px] font-[400] text-[#777169] tracking-[0.16px]">系统运行时间</span>
-            <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center">
-               <svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                 <circle cx="12" cy="12" r="9" stroke-width="1.8"/>
-                 <path d="M12 7v5l3 3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-               </svg>
-            </div>
+        <div class="premium-card p-6 flex flex-col justify-between flex-1 animate-fade-in" style="animation-delay: 0.4s">
+          <div v-if="isPageLoading" class="flex flex-col gap-4">
+             <div class="flex justify-between items-center"><div class="w-24 h-4 skeleton-pulse rounded"></div><div class="w-10 h-10 skeleton-pulse rounded-full"></div></div>
+             <div class="w-16 h-10 skeleton-pulse rounded mt-2"></div>
           </div>
-          <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4 border-b-0" style="font-family: 'Waldenburg', sans-serif;">
-            <template v-if="uptime.days > 0">
-              {{ uptime.days }}<span class="text-[14px] font-[400] text-[#777169] ml-1 mr-2 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">天</span>
-            </template>
-            {{ uptime.hours }}<span class="text-[14px] font-[400] text-[#777169] ml-1 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">小时</span>
-          </p>
+          <template v-else>
+            <div class="flex items-center justify-between">
+              <span class="text-[14px] font-[400] text-[#777169] tracking-[0.16px]">系统运行时间</span>
+              <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center">
+                 <svg class="w-5 h-5 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                   <circle cx="12" cy="12" r="9" stroke-width="1.8"/>
+                   <path d="M12 7v5l3 3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                 </svg>
+              </div>
+            </div>
+            <p class="text-[40px] leading-none font-[300] tracking-[-0.96px] text-black mt-4" style="font-family: 'Waldenburg', sans-serif;">
+              <template v-if="uptime.days > 0">
+                {{ uptime.days }}<span class="text-[14px] font-[400] text-[#777169] ml-1 mr-2 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">天</span>
+              </template>
+              {{ uptime.hours }}<span class="text-[14px] font-[400] text-[#777169] ml-1 align-baseline tracking-[0.16px]" style="font-family: 'Inter', sans-serif;">小时</span>
+            </p>
+          </template>
         </div>
       </div>
 
       <!-- 右侧：上传控制台 -->
-      <div class="col-span-1 lg:col-span-2 rounded-[24px] p-8 flex flex-col transition-shadow hover:shadow-subtle-elevate relative overflow-hidden" 
-           style="background: linear-gradient(135deg, rgba(245, 242, 239, 0.5) 0%, rgba(240, 244, 248, 0.3) 100%); box-shadow: rgba(0,0,0,0.06) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 1px 2px, rgba(0,0,0,0.04) 0px 2px 4px;">
+      <div class="col-span-1 lg:col-span-2 premium-card p-8 flex flex-col relative overflow-hidden animate-fade-in" 
+           style="background: linear-gradient(135deg, rgba(245, 242, 239, 0.5) 0%, rgba(240, 244, 248, 0.3) 100%); animation-delay: 0.5s;">
         
-        <!-- Waveform Background Pattern -->
-        <div class="absolute inset-x-0 bottom-0 h-32 opacity-[0.03] pointer-events-none" 
-             style="background-image: repeating-linear-gradient(90deg, #4e3217 0, #4e3217 1px, transparent 1px, transparent 8px); mask-image: linear-gradient(to top, black, transparent);"></div>
+        <!-- Animated Waveform Background -->
+        <div class="absolute inset-x-0 bottom-0 h-32 pointer-events-none overflow-hidden opacity-[0.08]">
+          <div class="flex items-end justify-center gap-1.5 h-full px-4">
+            <div v-for="i in 40" :key="i" 
+                 class="w-1 bg-[#4e3217] rounded-full animate-wave-flow"
+                 :style="{ 
+                   height: Math.random() * 80 + 20 + '%', 
+                   animationDelay: (i * 0.1) + 's',
+                   animationDuration: (Math.random() * 1 + 1) + 's'
+                 }">
+            </div>
+          </div>
+        </div>
 
         <h3 class="text-[18px] font-[400] text-black mb-6 tracking-[0.16px] relative z-10">语音处理台</h3>
 
@@ -571,7 +618,7 @@ const goTranscript = (row) => {
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full pb-6">
       
       <!-- 左：词云 -->
-      <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] p-6 flex flex-col transition-shadow hover:shadow-subtle-elevate">
+      <div class="premium-card p-6 flex flex-col animate-fade-in" style="animation-delay: 0.6s">
         <h3 class="text-[18px] font-[400] text-black tracking-[0.16px] mb-3">近期对话焦点</h3>
         <div style="flex:1;min-height:220px;background:#f6f6f6;border-radius:16px;position:relative;overflow:hidden;">
           <div v-show="keywords.length === 0"
@@ -582,9 +629,9 @@ const goTranscript = (row) => {
       </div>
 
       <!-- 右：历史 -->
-      <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] p-6 flex flex-col transition-shadow hover:shadow-subtle-elevate">
+      <div class="premium-card p-6 flex flex-col animate-fade-in" style="animation-delay: 0.7s">
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-[18px] font-[400] text-black tracking-[0.16px]">最新转录卷宗</h3>
+          <h3 class="text-[18px] font-[400] text-black tracking-[0.16px]">最新转录记录</h3>
           <button class="text-[13px] text-[#777169] hover:text-black hover:underline transition-colors bg-transparent border-none cursor-pointer p-0" @click="router.push('/history')">探索全部</button>
         </div>
         
@@ -597,20 +644,35 @@ const goTranscript = (row) => {
               <div v-for="record in recentRecords" :key="record.id"
                    class="flex justify-between items-center py-4 hover:bg-[#f6f6f6] px-4 -mx-4 rounded-[12px] cursor-pointer transition-all border border-transparent hover:border-[#e5e5e5]"
                    @click="goTranscript(record)">
-                <div class="flex items-center min-w-0">
-                  <div class="w-10 h-10 rounded-full bg-[#f6f6f6] flex items-center justify-center flex-shrink-0">
+                <div class="flex items-center min-w-0 relative">
+                  <!-- New Badge (Based on upload_time) -->
+                  <div v-if="isNewRecord(record)" class="absolute -left-2 -top-2 z-50">
+                    <div class="new-badge">NEW</div>
+                  </div>
+                  
+                  <div class="w-10 h-10 rounded-full bg-[#fcfbf9] flex items-center justify-center flex-shrink-0 border border-[#f0f0f0] shadow-sm">
                     <svg class="w-4 h-4 text-[#4e4e4e]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0121 9.414V19a2 2 0 01-2 2z"/>
                     </svg>
                   </div>
                   <div class="ml-4 flex flex-col min-w-0">
-                    <span class="text-[15px] font-medium text-black truncate tracking-[-0.3px]">{{ record.title }}</span>
-                    <span class="text-[12px] text-[#777169] mt-1.5 truncate tracking-[0.16px]">{{ record.created_at }}</span>
+                    <!-- Top: Record Title -->
+                    <span class="text-[15px] font-medium text-black truncate tracking-[-0.3px] mb-1">
+                      {{ record.title || record.original_filename || `未命名记录 #${record.id}` }}
+                    </span>
+                    <!-- Bottom: Filename & Time -->
+                    <div class="flex items-center gap-2">
+                       <span v-if="record.title && record.original_filename" class="text-[11px] text-[#999] truncate tracking-[0.16px] max-w-[120px]" :title="record.original_filename">
+                        {{ record.original_filename }}
+                      </span>
+                      <span v-if="record.title && record.original_filename" class="text-[10px] text-[#ccc]">•</span>
+                      <span class="text-[11px] text-[#999] tracking-[0.16px]">{{ record.created_at || '刚才' }}</span>
+                    </div>
                   </div>
                 </div>
                 <div class="flex-shrink-0 ml-4">
-                   <span class="px-3 py-1 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] rounded-full text-[11px] font-medium text-black border border-[#e5e5e5]">
-                     {{ record.status_label || record.status }}
+                   <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold border transition-all" :class="getStatusClass(record.status)">
+                     {{ record.status === 'success' ? '分析完成' : (record.status === 'failed' ? '分析失败' : (record.status_label || record.status)) }}
                    </span>
                 </div>
               </div>
@@ -625,6 +687,15 @@ const goTranscript = (row) => {
 </template>
 
 <style scoped>
+@keyframes wave-flow {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+.animate-wave-flow {
+  animation: wave-flow 2s ease-in-out infinite;
+}
+
 @keyframes barberpole {
   to { background-position: 1rem 0; }
 }
@@ -649,6 +720,25 @@ const goTranscript = (row) => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.new-badge {
+  background: #000;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 4px;
+  transform: rotate(15deg);
+  box-shadow: 0 0 0 2px #fff, 0 4px 10px rgba(0,0,0,0.3);
+  letter-spacing: 0.02em;
+  animation: badge-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+  0% { transform: rotate(15deg) scale(1); box-shadow: 0 0 0 2px #fff, 0 4px 10px rgba(0,0,0,0.3); }
+  50% { transform: rotate(15deg) scale(1.1); box-shadow: 0 0 0 4px #fff, 0 6px 15px rgba(0,0,0,0.4); }
+  100% { transform: rotate(15deg) scale(1); box-shadow: 0 0 0 2px #fff, 0 4px 10px rgba(0,0,0,0.3); }
 }
 </style>
 

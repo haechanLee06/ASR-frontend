@@ -61,14 +61,14 @@ const currentDate = computed(() => {
         <span>{{ currentDate }}</span>
         
         <template v-if="loading">
-          <span class="inline-block w-32 h-3.5 bg-[#f5f5f5] rounded animate-pulse"></span>
+          <span class="inline-block w-32 h-3.5 bg-[#f5f5f5] rounded skeleton-pulse"></span>
         </template>
         <template v-else>
           <span>{{ ambientData.location }} · {{ ambientData.weather }} {{ ambientData.temperature }}°C</span>
         </template>
         
         <template v-if="loading">
-          <span class="inline-block w-24 h-3.5 bg-[#f5f5f5] rounded animate-pulse"></span>
+          <span class="inline-block w-24 h-3.5 bg-[#f5f5f5] rounded skeleton-pulse"></span>
         </template>
         <template v-else>
           <span>系统已运行 {{ ambientData.uptime_days }}天 {{ ambientData.uptime_hours }}小时</span>

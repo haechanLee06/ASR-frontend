@@ -14,6 +14,14 @@ const props = defineProps({
   playbackRate: {
     type: Number,
     default: 1.0
+  },
+  waveColor: {
+    type: String,
+    default: '#e5e5e5'
+  },
+  progressColor: {
+    type: String,
+    default: '#000000'
   }
 })
 
@@ -29,9 +37,9 @@ const initWaveSurfer = () => {
 
   wavesurfer = WaveSurfer.create({
     container: waveContainer.value,
-    waveColor: '#e5e5e5', // 浅暖灰
-    progressColor: '#000000', // 纯黑
-    cursorColor: '#000000',
+    waveColor: props.waveColor,
+    progressColor: props.progressColor,
+    cursorColor: props.progressColor,
     cursorWidth: 2,
     height: 48, // 适应行内高度
     barWidth: 1, // 稍微细一些更美观

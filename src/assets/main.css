@@ -32,12 +32,24 @@
   --shadow-inset: rgba(0,0,0,0.075) 0px 0px 0px 0.5px inset;
   --shadow-outline: rgba(0,0,0,0.06) 0px 0px 0px 1px;
   --shadow-warm: rgba(78,50,23,0.04) 0px 6px 16px;
+  
+  /* Premium Layered Shadows */
+  --shadow-premium: 
+    0px 1px 2px rgba(0, 0, 0, 0.04),
+    0px 4px 8px rgba(0, 0, 0, 0.04),
+    0px 12px 24px rgba(0, 0, 0, 0.04);
+  --shadow-subtle-elevate: 
+    0px 2px 4px rgba(0, 0, 0, 0.02),
+    0px 8px 16px rgba(0, 0, 0, 0.04);
+  
+  /* Skeleton & Pulse */
+  --skeleton-bg: #f2f2f2;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: "Inter", "-apple-system", "system-ui", sans-serif;
+  font-family: "Outfit", "Inter", "-apple-system", "system-ui", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--color-background);
@@ -45,9 +57,44 @@ body {
   letter-spacing: 0.16px; /* Airiness */
 }
 
+/* Base Display Classes */
+.premium-card {
+  background: var(--color-surface);
+  border-radius: 24px;
+  box-shadow: var(--shadow-outline), var(--shadow-premium);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.premium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-outline), var(--shadow-subtle-elevate), 0 20px 40px rgba(0,0,0,0.06);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes skeleton-pulse {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.skeleton-pulse {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s infinite;
+}
+
 /* Light display variants for headings */
 h1 {
-  font-family: "Waldenburg", "-apple-system", "system-ui", sans-serif;
+  font-family: "Waldenburg", "Outfit", sans-serif;
   font-size: 24px;
   font-weight: 300;
   margin: 0;
@@ -56,7 +103,7 @@ h1 {
 }
 
 h2 {
-  font-family: "Waldenburg", "-apple-system", "system-ui", sans-serif;
+  font-family: "Waldenburg", "Outfit", sans-serif;
   font-size: 18px;
   font-weight: 300;
   margin: 0;
@@ -67,9 +114,9 @@ h2 {
 /* Utility for layout */
 .page-container {
   background-color: var(--color-surface);
-  border-radius: 16px;
+  border-radius: 24px;
   padding: 24px;
-  box-shadow: var(--shadow-outline), var(--shadow-inset);
+  box-shadow: var(--shadow-outline), var(--shadow-premium);
   min-height: calc(100vh - 100px);
 }
 
@@ -79,7 +126,7 @@ h2 {
   height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #e5e5e5;
+  background: rgba(0,0,0,0.05);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-track {
@@ -89,4 +136,5 @@ h2 {
 /* Base Buttons Pill Override for Element Plus */
 .el-button {
   border-radius: 9999px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }

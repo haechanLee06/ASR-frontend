@@ -122,15 +122,17 @@ onMounted(() => {
   <div class="page-container transcript-check-page">
     
     <!-- 1. Header (Fixed Height) -->
-    <header class="app-header">
-      <el-button 
-        class="back-btn" 
-        circle 
-        :icon="ArrowLeft" 
-        @click="router.push(`/detail/${id}`)"
-        title="返回详情页"
-      />
-      <div class="header-title">案件访问记录卷宗 - Record #{{ id }}</div>
+    <header class="detail-header animate-fade-in" style="animation-delay: 0.1s">
+      <div class="header-left">
+        <el-button 
+          class="back-btn" 
+          circle 
+          :icon="ArrowLeft" 
+          @click="router.push(`/detail/${id}`)"
+          title="返回详情页"
+        />
+        <h1 class="record-title">对话深度侧写 - Record #{{ id }}</h1>
+      </div>
     </header>
 
     <!-- 2. Main Workspace (Flex 1) -->
@@ -271,26 +273,42 @@ onMounted(() => {
   box-sizing: border-box;
 }
 
-.app-header {
-  height: 60px;
+.detail-header {
+  height: 64px;
   background-color: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #f0f0f0;
   display: flex;
   align-items: center;
-  padding: 0 25px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  padding: 0 24px;
   z-index: 10;
-  flex-shrink: 0; /* 防止头部被挤压 */
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
 .back-btn {
-  margin-right: 20px;
+  width: 40px;
+  height: 40px;
+  background: #f6f6f6;
+  border: none;
+  color: #4e4e4e;
 }
 
-.header-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
+.back-btn:hover {
+  background: #000;
+  color: #fff;
+}
+
+.record-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 300;
+  color: #000;
+  font-family: 'Waldenburg', sans-serif;
 }
 
 .main-content {

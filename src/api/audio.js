@@ -59,3 +59,7 @@ export const getDashboardRecentRecords = () => {
 export const sendHeartbeat = () => {
   return request.post('/api/system/heartbeat')
 }
+
+export const updateRecordTitle = (id, title) => {
+  return request.put(`/record/${id}/title`, { title })
+}

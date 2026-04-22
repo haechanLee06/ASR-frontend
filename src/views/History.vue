@@ -1,9 +1,10 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import request from '@/api/request'
-import { deleteRecord } from '@/api/audio'
+import { deleteRecord, updateRecordTitle } from '@/api/audio'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Check, Close, Loading } from '@element-plus/icons-vue'
 
 const rawData = ref([])
 const loading = ref(true)
@@ -55,7 +56,7 @@ async function handleBatchDelete() {
   try {
     const ids = Array.from(selectedIds.value)
     await Promise.all(ids.map(id => deleteRecord(id)))
-    ElMessage.success('案卷清理完毕')
+    ElMessage.success('记录清理完毕')
     selectedIds.value.clear()
     await fetchHistory()
   } catch (e) {
@@ -71,7 +72,7 @@ async function handleDeleteRow(row) {
   const id = row?.id || row?.record_id
   if (!id) return
   
-  ElMessageBox.confirm('这将会永久销毁此条案卷及相关音频，是否继续？', '防误删确认', {
+  ElMessageBox.confirm('这将会永久销毁此条转录记录及相关音频，是否继续？', '防误删确认', {
     confirmButtonText: '强制销毁',
     cancelButtonText: '保留',
     type: 'warning',
@@ -91,12 +92,60 @@ function goDetail(row) {
   }
 }
 
+async function handleEditTitle(row) {
+  const id = row?.id || row?.record_id
+  if (!id) return
+  editingId.value = id
+  editValue.value = row.title || ''
+}
+
+const editingId = ref(null)
+const editValue = ref('')
+const isSavingTitle = ref(false)
+
+async function cancelEdit() {
+  editingId.value = null
+  editValue.value = ''
+}
+
+async function saveTitleEdit(row) {
+  if (!editValue.value?.trim()) return
+  const id = row.id || row.record_id
+  isSavingTitle.value = true
+  try {
+    await updateRecordTitle(id, editValue.value.trim())
+    ElMessage.success('名称已更新')
+    editingId.value = null
+    fetchHistory()
+  } finally {
+    isSavingTitle.value = false
+  }
+}
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '--'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return dateStr.replace('T', ' ')
+    const pad = (n) => n.toString().padStart(2, '0')
+    const Y = d.getFullYear()
+    const M = pad(d.getMonth() + 1)
+    const D = pad(d.getDate())
+    const h = pad(d.getHours())
+    const m = pad(d.getMinutes())
+    const s = pad(d.getSeconds())
+    return `${Y}-${M}-${D} ${h}:${m}:${s}`
+  } catch (e) {
+    return dateStr.replace('T', ' ')
+  }
+}
+
 const getStatusLabel = (status) => {
   if (!status) return '未知'
   const map = {
     pending: '排队进入序列',
     processing: '系统转写中',
-    success: '已封卷存档',
+    success: '已保存',
     failed: '解析失败'
   }
   return map[status] || status
@@ -124,7 +173,7 @@ const getStatusPillClass = (status) => {
     <!-- Header -->
     <div class="flex justify-between items-end mb-8 px-2">
       <div>
-        <h1 class="text-[32px] font-[300] tracking-[-0.96px] text-[#000000] mb-1" style="font-family: 'Waldenburg', sans-serif;">所有案卷</h1>
+        <h1 class="text-[32px] font-[300] tracking-[-0.96px] text-[#000000] mb-1" style="font-family: 'Waldenburg', sans-serif;">所有记录</h1>
         <p class="text-[14px] text-[#777169] tracking-[0.16px]">管理与回顾过去的语音处理记录</p>
       </div>
       
@@ -138,10 +187,11 @@ const getStatusPillClass = (status) => {
     <div class="bg-white rounded-[24px] shadow-[rgba(0,0,0,0.06)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_1px_2px,rgba(0,0,0,0.04)_0px_2px_4px] overflow-x-auto relative">
       <div class="min-w-[808px]">
         <!-- Custom Header Row -->
-        <div class="grid grid-cols-[64px_minmax(200px,1fr)_120px_140px_180px_120px] items-center px-4 py-4 border-b border-[#e5e5e5] bg-[#fdfdfd]">
+        <div class="grid grid-cols-[64px_minmax(150px,1fr)_minmax(150px,1fr)_100px_120px_160px_110px] items-center px-4 py-4 border-b border-[#e5e5e5] bg-[#fdfdfd]">
           <div class="flex items-center justify-center">
              <input type="checkbox" :checked="isAllSelected" :data-indeterminate="isIndeterminate" @change="toggleSelectAll" class="minimal-checkbox" />
           </div>
+          <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase">Record Name</span>
           <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase">File Name</span>
           <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase text-center">Duration</span>
           <span class="text-[12px] font-medium text-[#777169] tracking-[0.16px] uppercase text-center">Status</span>
@@ -152,8 +202,9 @@ const getStatusPillClass = (status) => {
         <!-- Loading Skeleton -->
         <transition name="fade" mode="out-in">
           <div v-if="loading" class="flex flex-col">
-            <div v-for="i in 5" :key="i" class="grid grid-cols-[64px_minmax(200px,1fr)_120px_140px_180px_120px] items-center px-4 py-5 border-b border-[#f5f5f5] last:border-0">
+            <div v-for="i in 5" :key="i" class="grid grid-cols-[64px_minmax(150px,1fr)_minmax(150px,1fr)_100px_120px_160px_110px] items-center px-4 py-5 border-b border-[#f5f5f5] last:border-0">
               <div class="flex justify-center"><div class="w-4 h-4 rounded-[4px] bg-[#f5f5f5] animate-pulse"></div></div>
+              <div class="pr-4"><div class="h-4 bg-[#f5f5f5] rounded block w-3/4 animate-pulse"></div></div>
               <div class="pr-6"><div class="h-4 bg-[#f5f5f5] rounded block w-3/4 animate-pulse"></div></div>
               <div class="flex justify-center"><div class="h-4 bg-[#f5f5f5] rounded block w-12 animate-pulse"></div></div>
               <div class="flex justify-center"><div class="h-6 bg-[#f5f5f5] rounded-full block w-16 animate-pulse"></div></div>
@@ -164,13 +215,13 @@ const getStatusPillClass = (status) => {
 
           <div v-else-if="rawData.length === 0" class="flex flex-col items-center justify-center py-24">
             <svg class="w-12 h-12 text-[#e5e5e5] mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0121 9.414V19a2 2 0 01-2 2z"/></svg>
-            <span class="text-[14px] text-[#777169] tracking-[0.16px]">深空宁静，暂无任何案卷记录</span>
+            <span class="text-[14px] text-[#777169] tracking-[0.16px]">深空宁静，暂无任何记录</span>
           </div>
 
           <!-- Data Rows -->
           <div v-else class="flex flex-col">
             <div v-for="row in rawData" :key="row.id || row.record_id" 
-                 class="grid grid-cols-[64px_minmax(200px,1fr)_120px_140px_180px_120px] items-center px-4 py-4 border-b border-[#f5f5f5] last:border-0 hover:bg-[#fcfbf9] transition-colors group cursor-pointer"
+                 class="grid grid-cols-[64px_minmax(150px,1fr)_minmax(150px,1fr)_100px_120px_160px_110px] items-center px-4 py-4 border-b border-[#f5f5f5] last:border-0 hover:bg-[#fcfbf9] transition-colors group cursor-pointer"
                  @click.self="goDetail(row)">
                  
               <!-- Checkbox -->
@@ -179,13 +230,37 @@ const getStatusPillClass = (status) => {
                 <input type="checkbox" :checked="selectedIds.has(row.id || row.record_id)" class="minimal-checkbox pointer-events-none" />
               </div>
 
+              <!-- RecordTitle -->
+              <div class="pr-4 flex flex-col min-w-0" @click="goDetail(row)">
+                <div v-if="editingId === (row.id || row.record_id)" class="flex items-center gap-2" @click.stop>
+                  <input v-model="editValue" class="edit-input" @keyup.enter="saveTitleEdit(row)" @keyup.esc="cancelEdit" autofocus />
+                  <div class="flex gap-1">
+                    <button class="mini-action-btn btn-confirm" @click="saveTitleEdit(row)" :disabled="isSavingTitle">
+                      <el-icon v-if="!isSavingTitle"><Check /></el-icon>
+                      <el-icon v-else class="is-loading"><Loading /></el-icon>
+                    </button>
+                    <button class="mini-action-btn btn-cancel" @click="cancelEdit" :disabled="isSavingTitle">
+                      <el-icon><Close /></el-icon>
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="flex items-center gap-2 group/title">
+                  <span class="text-[15px] font-medium text-black truncate tracking-[-0.3px]">
+                    {{ row.title || `未命名记录 #${row.id || row.record_id}` }}
+                  </span>
+                  <button @click.stop="handleEditTitle(row)" class="opacity-0 group-hover/title:opacity-100 p-1 hover:bg-[#f3f0ec] rounded transition-all">
+                    <svg class="w-3.5 h-3.5 text-[#777169]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </div>
+              </div>
+
               <!-- FileName -->
               <div class="pr-6 flex flex-col min-w-0" @click="goDetail(row)">
-                <span class="text-[15px] font-medium text-black truncate tracking-[-0.3px]">{{ row.original_filename || row.filename }}</span>
+                <span class="text-[13px] text-[#777169] truncate tracking-[-0.1px]">{{ row.original_filename || row.filename }}</span>
               </div>
 
               <!-- Duration -->
-              <div class="flex justify-center text-[14px] text-[#777169] font-medium tracking-[0.16px]" style="font-family: 'Inter', sans-serif;" @click="goDetail(row)">
+              <div class="flex justify-center text-[13px] text-[#777169] font-medium tracking-[0.16px]" style="font-family: 'Inter', sans-serif;" @click="goDetail(row)">
                 {{ row.duration || '--' }}
               </div>
 
@@ -196,14 +271,14 @@ const getStatusPillClass = (status) => {
 
               <!-- Date -->
               <div class="text-[13px] text-[#777169] tracking-[0.16px]" style="font-family: 'Inter', sans-serif;" @click="goDetail(row)">
-                {{ row.upload_time || row.created_at || '--' }}
+                {{ formatDate(row.upload_time || row.created_at) }}
               </div>
 
               <!-- Actions -->
-              <div class="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity relative items-center pr-4">
-                <button @click.stop="goDetail(row)" class="text-[13px] font-medium text-[#777169] hover:text-black hover:underline transition-colors tracking-[0.16px]">核阅</button>
+              <div class="flex justify-end gap-3 transition-opacity relative items-center pr-2">
+                <button @click.stop="goDetail(row)" class="text-[12px] font-medium text-[#777169] hover:text-black hover:underline transition-colors tracking-[0.16px]">核阅</button>
                 <div class="w-px h-3 bg-[#e5e5e5]"></div>
-                <button @click.stop="handleDeleteRow(row)" class="text-[13px] font-medium text-rose-500/80 hover:text-rose-600 hover:underline transition-colors tracking-[0.16px]">删除</button>
+                <button @click.stop="handleDeleteRow(row)" class="text-[12px] font-medium text-rose-500/80 hover:text-rose-600 hover:underline transition-colors tracking-[0.16px]">删除</button>
               </div>
             </div>
           </div>
@@ -226,7 +301,7 @@ const getStatusPillClass = (status) => {
                 class="flex items-center gap-1.5 text-[14px] font-medium text-rose-600 hover:text-rose-700 transition-colors"
                 :class="{ 'opacity-50 cursor-not-allowed': isDeleting }">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          {{ isDeleting ? '清理中...' : '销毁选定案卷' }}
+          {{ isDeleting ? '清理中...' : '销毁选定记录' }}
         </button>
       </div>
     </transition>
@@ -304,4 +379,34 @@ const getStatusPillClass = (status) => {
   opacity: 0;
   transform: translate(-50%, 20px);
 }
+
+.edit-input {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+}
+.edit-input:focus {
+  border-color: #000;
+  background: #fff;
+}
+
+.mini-action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+}
+.mini-action-btn.btn-confirm { background: #000; color: #fff; }
+.mini-action-btn.btn-cancel { background: #f0f0f0; color: #666; }
+.mini-action-btn:hover { transform: scale(1.1); }
 </style>
