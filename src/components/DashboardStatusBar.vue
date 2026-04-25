@@ -84,19 +84,19 @@ const currentDate = computed(() => {
           <span class="relative flex h-2 w-2">
             <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span>Paraformer: <span class="text-emerald-600 font-semibold ml-0.5">Online</span></span>
+          <span>Paraformer <span class="text-[#aaa] font-normal">(语音识别)</span>: <span class="text-emerald-600 font-semibold ml-0.5">在线</span></span>
         </template>
         <template v-else-if="loading">
           <span class="relative flex h-2 w-2">
             <span class="relative inline-flex rounded-full h-2 w-2 bg-[#f5f5f5] animate-pulse"></span>
           </span>
-          <span>Paraformer: <span class="ml-0.5 text-[#e5e5e5]">Loading...</span></span>
+          <span>Paraformer <span class="text-[#aaa] font-normal">(语音识别)</span>: <span class="ml-0.5 text-[#e5e5e5]">Loading...</span></span>
         </template>
         <template v-else>
           <span class="relative flex h-2 w-2">
             <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-400"></span>
           </span>
-          <span>Paraformer: <span class="ml-0.5 text-rose-500/80">Offline</span></span>
+          <span>Paraformer <span class="text-[#aaa] font-normal">(语音识别)</span>: <span class="ml-0.5 text-rose-500/80">离线</span></span>
         </template>
       </div>
 
@@ -106,19 +106,19 @@ const currentDate = computed(() => {
           <span class="relative flex h-2 w-2">
             <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span>Qwen: <span class="text-emerald-600 font-semibold ml-0.5">Online</span></span>
+          <span>Qwen <span class="text-[#aaa] font-normal">(语言模型)</span>: <span class="text-emerald-600 font-semibold ml-0.5">在线</span></span>
         </template>
         <template v-else-if="loading">
           <span class="relative flex h-2 w-2">
             <span class="relative inline-flex rounded-full h-2 w-2 bg-[#f5f5f5] animate-pulse"></span>
           </span>
-          <span>Qwen: <span class="ml-0.5 text-[#e5e5e5]">Loading...</span></span>
+          <span>Qwen <span class="text-[#aaa] font-normal">(语言模型)</span>: <span class="ml-0.5 text-[#e5e5e5]">Loading...</span></span>
         </template>
         <template v-else>
           <span class="relative flex h-2 w-2">
             <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-400"></span>
           </span>
-          <span>Qwen: <span class="ml-0.5 text-rose-500/80">Offline</span></span>
+          <span>Qwen <span class="text-[#aaa] font-normal">(语言模型)</span>: <span class="ml-0.5 text-rose-500/80">离线</span></span>
         </template>
       </div>
     </div>

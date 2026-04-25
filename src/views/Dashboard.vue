@@ -97,8 +97,8 @@ async function handleDrop(e) {
   const file = e.dataTransfer?.files?.[0]
   console.log('User dropped file:', e.dataTransfer?.files)
   if (!file) return
-  if (!file.type.startsWith('audio/')) {
-    ElMessage.warning('请上传音频格式文件')
+  if (!file.type.startsWith('audio/') && !file.type.startsWith('video/')) {
+    ElMessage.warning('请上传音频或视频格式文件')
     return
   }
   await handleUpload({ file })
@@ -271,7 +271,33 @@ const buildWordCloudOption = () => {
   const values = keywords.value.map(k => Number(k.value) || 0)
   const min = Math.min(...values)
   const max = Math.max(...values)
-  const colors = ['#000000', '#4e4e4e', '#777169']
+
+  // 颜色色板：从高频到低频，深靛蓝 → 紫红 → 玫瑰 → 橙琥珀 → 薰衣草蓝
+  // t=1 (最高频) → t=0 (最低频)
+  const palette = [
+    { t: 1.0,  h: 231, s: 62, l: 28 },  // #1e2f6e 深靛蓝
+    { t: 0.8,  h: 258, s: 54, l: 38 },  // #5b3f8a 深紫
+    { t: 0.6,  h: 330, s: 58, l: 44 },  // #b53265 玫瑰红
+    { t: 0.4,  h: 22,  s: 72, l: 46 },  // #c96520 橙琥珀
+    { t: 0.2,  h: 196, s: 46, l: 48 },  // #438faa 钢蓝
+    { t: 0.0,  h: 220, s: 28, l: 70 },  // #9aaac8 薰衣草蓝（最低频）
+  ]
+
+  // 给定 t∈[0,1]，在 palette 中插值出 HSL 颜色字符串
+  const interpolateColor = (t) => {
+    for (let i = 0; i < palette.length - 1; i++) {
+      const a = palette[i], b = palette[i + 1]
+      if (t >= b.t) {
+        const ratio = (t - b.t) / (a.t - b.t)
+        const h = b.h + (a.h - b.h) * ratio
+        const s = b.s + (a.s - b.s) * ratio
+        const l = b.l + (a.l - b.l) * ratio
+        return `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`
+      }
+    }
+    const last = palette[palette.length - 1]
+    return `hsl(${last.h}, ${last.s}%, ${last.l}%)`
+  }
 
   const data = keywords.value.map(item => {
     const val = Number(item.value) || 0
@@ -280,11 +306,10 @@ const buildWordCloudOption = () => {
     return {
       name: item.name,
       value: val,
-      // 所有样式都放在局部 textStyle，避免全局/局部优先级冲突
       textStyle: {
         fontFamily: t > 0.5 ? 'Waldenburg, sans-serif' : 'Inter, sans-serif',
-        fontWeight: t > 0.5 ? 300 : 400,
-        color: colors[Math.floor(Math.random() * colors.length)]
+        fontWeight: t > 0.6 ? 600 : t > 0.3 ? 400 : 300,
+        color: interpolateColor(t)
       }
     }
   })
@@ -302,7 +327,6 @@ const buildWordCloudOption = () => {
       gridSize: 8,
       drawOutOfBound: false,
       layoutAnimation: false,
-      // 不写全局 textStyle：全部由 data 内部接管，杜绝优先级覆盖
       emphasis: { focus: 'none' },
       data
     }]
@@ -565,7 +589,7 @@ const goTranscript = (row) => {
 
         <h3 class="text-[18px] font-[400] text-black mb-6 tracking-[0.16px] relative z-10">语音处理台</h3>
 
-        <input ref="fileInput" type="file" accept="audio/*" class="hidden" @change="handleFileChange" />
+        <input ref="fileInput" type="file" accept="audio/*,video/*" class="hidden" @change="handleFileChange" />
 
         <!-- 状态 1：空闲上传 -->
         <div v-if="!isProcessing"
@@ -579,8 +603,8 @@ const goTranscript = (row) => {
             </svg>
           </div>
 
-          <p class="text-[16px] font-[300] tracking-[-0.3px] text-black mb-2" style="font-family: 'Waldenburg', sans-serif;">点击或拖拽音频文件至此</p>
-          <p class="text-[13px] text-[#777169] tracking-[0.16px]">支持 WAV / MP3 / M4A 格式，单次最高支持 2 小时</p>
+          <p class="text-[16px] font-[300] tracking-[-0.3px] text-black mb-2" style="font-family: 'Waldenburg', sans-serif;">点击或拖拽音频 / 视频文件至此</p>
+          <p class="text-[13px] text-[#777169] tracking-[0.16px]">音频：WAV / MP3 / M4A &nbsp;·&nbsp; 视频：MP4 / MOV / MKV，单次最高支持 2 小时</p>
 
           <button type="button" 
                   class="mt-8 px-8 py-3 bg-[rgba(245,242,239,0.8)] shadow-[rgba(78,50,23,0.04)_0px_6px_16px] rounded-full text-[14px] font-medium text-black hover:bg-[#f5f2ef] transition-all hover:scale-[1.02] active:scale-[0.98] pointer-events-none select-none">

@@ -17,7 +17,7 @@
 | **路由** | Vue Router 4（History 模式，带全局前置守卫） |
 | **样式方案** | TailwindCSS + 少量 Scoped CSS |
 | **后端基地址** | `http://localhost:5000` |
-| **核心业务** | 音频上传 → 异步 ASR 转写 → 文本核查 → AI 心理侧写（LLM） |
+| **核心业务** | 音频上传 → 异步 ASR 转写 → 文本核查 (四川话优化) → 对话总结生成 (LLM) |
 
 ---
 
@@ -164,9 +164,9 @@ service.interceptors.response.use(
 | `deleteRecord(id)` | `DELETE` | `/record/${id}` | `id: string` | 删除成功响应 |
 | `getTranscriptData(id)` | `GET` | `/api/transcript_data/${id}` | `id: string` | `{ display_data: [...], llm_context: string }` |
 | `updateSegmentText(recordId, segmentIndex, text)` | `PUT` | `/record/${recordId}/segment/${segmentIndex}` | `recordId: string, segmentIndex: number, text: string` | Payload: `{ text }`，持久化保存修改后的转录文本 |
-| `generateSummary(id)` | `POST` | `/api/summary/${id}` | `id: string`，Payload: `{}`（空对象） | 配置 `timeout: 300000`（5分钟），LLM 推理时间较长 |
-| `getDashboardAmbient()` | `GET` | `/api/dashboard/ambient` | 无 | `{ location, weather, temperature, uptime_days, uptime_hours }` |
-| `getDashboardHealth()` | `GET` | `/api/dashboard/health` | 无 | `{ asr_online: bool, llm_online: bool }` |
+| `generateSummary(id)` | `POST` | `/api/summary/${id}` | `id: string` | 配置 `timeout: 300000`（5分钟），支撑 LLM 复杂方言推理 |
+| `getDashboardAmbient()` | `GET` | `/api/dashboard/ambient` | 无 | 获取环境信息（天气、温度、运行时间） |
+| `getDashboardHealth()` | `GET` | `/api/dashboard/health` | 无 | 获取 ASR 与 LLM 服务健康状态 |
 | `getDashboardStats()` | `GET` | `/api/dashboard/stats` | 无 | `{ total_transcribed, total_summarized, uptime_hours }` |
 | `getDashboardKeywords()` | `GET` | `/api/dashboard/keywords` | 无 | `[{ name: string, value: number }]`，关键词词频数组 |
 | `getDashboardRecentRecords()` | `GET` | `/api/dashboard/recent_records` | 无 | `[{ id, title, status, status_label, created_at }]`，Top 5 最近记录 |
@@ -368,7 +368,64 @@ const onSliderChange = (val) => {
 
 ---
 
-### 3.4 内联文本编辑逻辑
+### 3.5 音频取证级波形控制 (Wavesurfer.js Integration)
+
+**技术演进**：系统从原生 HTML5 Audio 演进到了基于 `wavesurfer.js` 的专业波形图控制，提供了亚秒级的音频 Seek 能力与声纹可视化。
+
+#### 懒加载与性能优化 (`WaveformPlayer.vue`)
+
+```js
+// 基于 IntersectionObserver 的单例懒加载策略
+onMounted(() => {
+  observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && !hasLoaded.value && props.audioUrl) {
+      wavesurfer.load(props.audioUrl)
+      hasLoaded.value = true // 防止滚动时重复请求
+    }
+  }, { rootMargin: '200px' }) // 提前预加载
+  if (waveContainer.value) observer.observe(waveContainer.value)
+})
+```
+
+**设计要点**：针对长通话场景，仅在气泡进入视口时初始化 Canvas 渲染，解决了千行级剧本导致的 DOM 内存溢出问题。
+
+---
+
+### 3.6 四川话方言识别展示逻辑 (Sichuanese Presentation)
+
+**方言质检业务背景**：针对四川话中的语气助词（“噻”、“嘛”）与特定语法结构，前端实现了多角色、强交互的视觉对齐。
+
+#### 多角色镜像对齐方案 (Role Tagging)
+解析 `spk` 标签进行动态渲染，并利用 CSS Flex 布局实现沉浸式对话审美：
+- **spk0 (对方)**：头像-名称-工具栏 顺序对齐（靠左）。
+- **spk1 (我方)**：工具栏-名称-头像 倒序对齐（靠右）。
+
+```css
+/* 镜像对齐算法 */
+.row-left .chat-meta { flex-direction: row; }
+.row-right .chat-meta { flex-direction: row-reverse; }
+```
+
+---
+
+### 3.7 数据一致性与时间戳同步方案 (Data Integrity)
+
+**技术挑战**：修改对话片段（子表）时，父级记录（主表）的 `updated_at` 不会自动触写。
+
+#### “触碰式”更新策略 (Touch Mechanism)
+1. **后端**：在修改接口显式执行 `record.updated_at = datetime.utcnow()`。
+2. **前端**：操作成功后触发 `fetchRecordInfo` 增量刷新函数，仅更新同步时间戳和标题，不重载对话流，避免“滚动跳动” (Scroll Jump)。
+
+---
+
+### 3.8 Dashboard 动态感知系统 (Environmental Perception)
+
+**全天候健康监控**：利用 `Promise.allSettled` 并行请求 ASR 与 LLM 服务健康状态，并通过三态指示灯（灰/绿/红）实时展示。
+**Session 感知**：比对 API 返回的 `upload_time` 与本地 `sessionStartTime`，自动为新任务标记带波纹动画的 `NEW` 勋章。
+
+---
+
+### 3.9 内联文本编辑逻辑
 
 Detail.vue 实现了"气泡原地编辑"交互，无需弹窗，直接在文本显示区域切换编辑态。
 
@@ -481,16 +538,14 @@ App.vue
                       ├── History.vue
                       │     └── el-table（历史记录列表，带删除、跳转按钮）
                       │
-                      ├── Detail.vue（无独立子组件）
-                      │     ├── 左侧：.chat-panel（聊天气泡流，支持内联编辑）
-                      │     └── 右侧：.control-panel（音频播放器控制台）
+                      ├── Detail.vue（三段式分层架构）
+                      │     ├── Header: 动态元数据中台（支持标题修改与时间同步）
+                      │     ├── Main: 气泡流分析区（支持 Wavesurfer 声纹取证播放）
+                      │     └── Trigger: 自研 CustomConfirm 高级确认模态框
                       │
-                      └── TranscriptCheck.vue（无独立子组件）
-                            ├── <header>（固定高度标题栏）
-                            ├── <main>（双栏弹性布局）
-                            │     ├── .transcript-panel（左侧剧本流）
-                            │     └── .summary-panel（右侧 AI 侧写，条件渲染）
-                            └── <footer>（底部操作栏）
+                      └── TranscriptCheck.vue（双栏 AI 质检视图）
+                            ├── .transcript-panel（剧本溯源区）
+                            └── .summary-panel（LLM 多维度总结展示区）
 ```
 
 ---

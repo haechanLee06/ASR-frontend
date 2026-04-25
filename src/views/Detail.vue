@@ -268,6 +268,10 @@ const saveTitle = async () => {
   } finally { isSavingTitle.value = false }
 }
 
+const goTranscriptCheck = () => {
+  router.push(`/transcript-check/${route.params.id}`)
+}
+
 onMounted(fetchDetail)
 onUnmounted(stopPolling)
 </script>
@@ -276,7 +280,8 @@ onUnmounted(stopPolling)
   <div class="page-container detail-page-wrapper">
     <!-- Header -->
     <header class="detail-header animate-fade-in" style="animation-delay: 0.1s">
-      <div class="header-left">
+      <!-- Section 1: Back + Title -->
+      <div class="header-section section-left">
         <el-button class="back-btn" circle :icon="ArrowLeft" @click="router.push('/history')" />
         <div class="title-container" v-if="recordStatus === 'success'">
           <div v-if="!isEditingTitle" class="title-display" @click="editTitle">
@@ -297,16 +302,25 @@ onUnmounted(stopPolling)
           </div>
         </div>
       </div>
-      <div class="header-right" v-if="recordStatus === 'success'">
+
+      <!-- Section 2: Metadata (ID, File, Times) -->
+      <div class="header-section section-center" v-if="recordStatus === 'success'">
         <div class="meta-grid">
           <div class="meta-item"><span class="meta-label">编号</span><span class="meta-value">#{{ route.params.id }}</span></div>
           <div class="meta-divider"></div>
-          <div class="meta-item"><span class="meta-label">文件名</span><span class="meta-value truncate max-w-[120px]">{{ info.original_filename }}</span></div>
+          <div class="meta-item"><span class="meta-label">文件名</span><span class="meta-value truncate max-w-[100px]">{{ info.original_filename }}</span></div>
           <div class="meta-divider"></div>
-          <div class="meta-item"><span class="meta-label">上传时间</span><span class="meta-value">{{ formatDate(info.upload_time) }}</span></div>
+          <div class="meta-item"><span class="meta-label">上传于</span><span class="meta-value">{{ formatDate(info.upload_time) }}</span></div>
           <div class="meta-divider"></div>
-          <div class="meta-item"><span class="meta-label">最后更新</span><span class="meta-value">{{ formatDate(info.updated_at || info.upload_time) }}</span></div>
+          <div class="meta-item"><span class="meta-label">更新于</span><span class="meta-value">{{ formatDate(info.updated_at || info.upload_time) }}</span></div>
         </div>
+      </div>
+
+      <!-- Section 3: Action Button -->
+      <div class="header-section section-right" v-if="recordStatus === 'success'">
+        <button class="confirm-summary-btn" @click="goTranscriptCheck">
+          <span>确认无误，生成对话总结</span>
+        </button>
       </div>
     </header>
 
@@ -402,8 +416,26 @@ onUnmounted(stopPolling)
 
 <style scoped>
 .detail-page-wrapper { height: calc(100vh - 80px); display: flex; flex-direction: column; overflow: hidden; }
-.detail-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 32px; background: #fff; border-bottom: 1px solid #f0f0f0; }
-.header-left, .meta-grid, .title-display, .title-edit-form { display: flex; align-items: center; gap: 16px; }
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 32px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  height: 72px;
+}
+
+.header-section { display: flex; align-items: center; }
+.section-left { flex: 1; justify-content: flex-start; gap: 16px; }
+.section-center { flex: 1; justify-content: center; }
+.section-right { flex: 1; justify-content: flex-end; }
+
+.header-left, .meta-grid, .title-display, .title-edit-form {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
 .back-btn { background: #f6f6f6; border: none; }
 .back-btn:hover { background: #000; color: #fff; }
 .record-title { font-family: 'Waldenburg', sans-serif; font-size: 24px; font-weight: 300; margin: 0; }
@@ -414,7 +446,32 @@ onUnmounted(stopPolling)
 .meta-item { display: flex; flex-direction: column; }
 .meta-label { font-size: 10px; color: #999; text-transform: uppercase; }
 .meta-value { font-size: 13px; font-weight: 500; color: #4e4e4e; }
-.meta-divider { width: 1px; height: 20px; background: #eee; }
+.meta-divider { width: 1px; height: 16px; background: #eee; }
+
+/* Action Button */
+.confirm-summary-btn {
+  background: #000;
+  color: #fff;
+  border: none;
+  border-radius: 30px;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.confirm-summary-btn:hover {
+  background: #333;
+  transform: translateX(4px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.btn-emoji { font-size: 18px; line-height: 1; }
 
 .action-btn-custom { width: 32px; height: 32px; border-radius: 50%; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 14px; }
 .btn-confirm { background: #000; color: #fff; }
