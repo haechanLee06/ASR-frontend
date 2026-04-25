@@ -8,6 +8,7 @@ const Dashboard = () => import('@/views/Dashboard.vue')
 const History = () => import('@/views/History.vue')
 const Detail = () => import('@/views/Detail.vue')
 const TranscriptCheck = () => import('@/views/TranscriptCheck.vue')
+const Voiceprint = () => import('@/views/Voiceprint.vue')
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +23,7 @@ export const router = createRouter({
         { path: 'history', name: 'history', component: History },
         { path: 'detail/:id', name: 'detail', component: Detail },
         { path: 'transcript-check/:id', name: 'transcript-check', component: TranscriptCheck },
+        { path: 'voiceprint', name: 'voiceprint', component: Voiceprint },
       ],
     },
   ],

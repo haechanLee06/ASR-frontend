@@ -63,3 +63,31 @@ export const sendHeartbeat = () => {
 export const updateRecordTitle = (id, title) => {
   return request.put(`/record/${id}/title`, { title })
 }
+
+// ─── 声纹库 ──────────────────────────────────────────────────────────────
+
+export const getVoiceprintList = () => {
+  return request.get('/api/voiceprint/list')
+}
+
+export const enrollVoiceprint = (personName, file) => {
+  const formData = new FormData()
+  formData.append('person_name', personName)
+  formData.append('file', file)
+  return request.post('/api/voiceprint/enroll', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000 // Voiceprint processing might take a moment
+  })
+}
+
+export const deleteVoiceprint = (id) => {
+  return request.delete(`/api/voiceprint/${id}`)
+}
+
+export const getMatchSuggestions = (recordId) => {
+  return request.get(`/api/voiceprint/match_suggestions/${recordId}`)
+}
+
+export const applyVoiceprintMapping = (recordId, mapping) => {
+  return request.post(`/api/voiceprint/apply_mapping/${recordId}`, { mapping })
+}

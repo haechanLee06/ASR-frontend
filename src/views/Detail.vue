@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDetail, updateSegmentText, updateSegmentSpeaker, splitSegment, updateRecordTitle } from '@/api/audio'
-import { VideoPlay, VideoPause, ArrowLeft, Loading, Edit, Switch, Scissor, Check, Close } from '@element-plus/icons-vue'
+import { getDetail, updateSegmentText, updateSegmentSpeaker, splitSegment, updateRecordTitle, getMatchSuggestions, applyVoiceprintMapping, getVoiceprintList } from '@/api/audio'
+import { VideoPlay, VideoPause, ArrowLeft, Loading, Edit, Switch, Scissor, Check, Close, Memo, Microphone } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import WaveformPlayer from '@/components/WaveformPlayer.vue'
 
@@ -16,6 +16,15 @@ const chatPanelRef = ref(null)
 const recordStatus = ref('loading') // loading, polling, success, failed
 const errorMsg = ref('')
 let pollTimer = null
+
+// Voiceprint matching state
+const voiceprintSuggestions = ref([])
+const matchingDialogVisible = ref(false)
+const isApplyingMapping = ref(false)
+const selectedMappings = ref({}) // { raw_spk: suggested_name }
+const hasCheckedSuggestions = ref(false) // 防止单次挂载重复弹窗
+const speakerSideMap = ref({}) // 动态映射发言人到左右侧 { "name": "left" }
+const voiceprintLibrary = ref([]) // 用于实时名称转换
 
 // Computed for current segment
 const currentSegment = computed(() => {
@@ -130,10 +139,33 @@ const fetchDetail = async () => {
         isEditing: false,
         isSaving: false
       }))
+      
+      // 核心修复：建立动态侧边映射
+      const uniqueSpks = []
+      segs.forEach(s => {
+        if (s.spk && !uniqueSpks.includes(s.spk)) uniqueSpks.push(s.spk)
+      })
+      speakerSideMap.value = {
+        [uniqueSpks[0]]: 'left',
+        [uniqueSpks[1]]: 'right'
+      }
+
       info.value = { ...data.info, segments: segs }
+      console.log('Record Info Loaded:', info.value)
+      
+      // 同步获取录音库以支持“自动更新名称”
+      await fetchVoiceprintLibrary()
+
       if (segs.length > 0 && currentId.value === 0) currentId.value = 0
       recordStatus.value = 'success'
       stopPolling()
+
+      // Check for voiceprint suggestions if never processed
+      console.log('Voiceprint Status:', info.value.voiceprint_status)
+      if (Number(info.value.voiceprint_status) === 0 && !hasCheckedSuggestions.value) {
+        hasCheckedSuggestions.value = true // 标记已在本周期检查过
+        checkVoiceprintSuggestions()
+      }
     } else if (status === 'failed') {
       recordStatus.value = 'failed'
       errorMsg.value = data.error_message || '任务处理失败'
@@ -146,6 +178,62 @@ const fetchDetail = async () => {
     recordStatus.value = 'failed'
     errorMsg.value = e.message || '获取详情失败'
     stopPolling()
+  }
+}
+
+const fetchVoiceprintLibrary = async () => {
+  try {
+    const res = await getVoiceprintList()
+    if (res?.data) voiceprintLibrary.value = res.data
+  } catch (e) {
+    console.warn('Sync voiceprint library failed', e)
+  }
+}
+
+// 动态解析发言人姓名（支持声纹库改名自动同步）
+const resolveSpeakerDisplayName = (item) => {
+  // 如果当前 seg 的 speaker name 或 spk ID 匹配到了声纹库里的记录（基于某种关联，这里暂以名称作为桥梁）
+  // 理想情况后端应返回 voiceprint_id，目前我们尝试从库里找匹配
+  const found = voiceprintLibrary.value.find(v => v.person_name === item.speaker_name || v.person_name === item.spk)
+  if (found) return found.person_name
+  return item.speaker_name || (speakerSideMap.value[item.spk] === 'left' ? '发音人 A' : '发音人 B')
+}
+
+const checkVoiceprintSuggestions = async () => {
+  console.log('Fetching voiceprint suggestions for ID:', route.params.id)
+  try {
+    const res = await getMatchSuggestions(route.params.id)
+    console.log('Match suggestions response:', res)
+    if (res?.data && res.data.length > 0) {
+      voiceprintSuggestions.value = res.data
+      // Initialize selected mappings with all suggestions by default
+      const initial = {}
+      res.data.forEach(item => {
+        initial[item.raw_spk] = item.suggested_name
+      })
+      selectedMappings.value = initial
+      matchingDialogVisible.value = true
+    } else {
+      console.log('No matched voiceprints found in suggestions.')
+    }
+  } catch (e) {
+    console.error('Failed to get voiceprint suggestions', e)
+  }
+}
+
+const handleApplyMapping = async (apply = true) => {
+  isApplyingMapping.value = true
+  try {
+    const mappingToSend = apply ? selectedMappings.value : {}
+    await applyVoiceprintMapping(route.params.id, mappingToSend)
+    ElMessage.success(apply ? '音色匹配映射已应用' : '已跳过匹配')
+    matchingDialogVisible.value = false
+    // Reload data to see changes
+    fetchDetail()
+  } catch (e) {
+    ElMessage.error('应用映射失败')
+  } finally {
+    isApplyingMapping.value = false
   }
 }
 
@@ -318,9 +406,15 @@ onUnmounted(stopPolling)
 
       <!-- Section 3: Action Button -->
       <div class="header-section section-right" v-if="recordStatus === 'success'">
-        <button class="confirm-summary-btn" @click="goTranscriptCheck">
-          <span>确认无误，生成对话总结</span>
-        </button>
+        <div class="flex items-center gap-3">
+          <button class="secondary-action-btn" @click="checkVoiceprintSuggestions" title="重新扫描并匹配声纹库">
+            <el-icon><Microphone /></el-icon>
+            <span>声纹匹配</span>
+          </button>
+          <button class="confirm-summary-btn" @click="goTranscriptCheck">
+            <span>确认无误，生成对话总结</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -338,16 +432,16 @@ onUnmounted(stopPolling)
       <div v-else class="chat-container" ref="chatPanelRef">
         <div v-for="(item, index) in info.segments" :key="index" :id="`bubble-${index}`"
              class="chat-row animate-fade-in" :style="{ animationDelay: (index * 0.05) + 's' }"
-             :class="[item.spk === 'spk0' ? 'row-left' : 'row-right', currentId === index ? 'row-active' : '', currentPlayingId === item.id ? 'row-playing' : '']">
+             :class="[speakerSideMap[item.spk] === 'left' ? 'row-left' : 'row-right', currentId === index ? 'row-active' : '', currentPlayingId === item.id ? 'row-playing' : '']">
           <div class="chat-avatar">
-            <el-avatar :size="40" :style="{ backgroundColor: item.spk === 'spk0' ? '#fff' : '#f5f2ef', color: '#000', border: '1px solid #eee' }">
-              {{ item.spk === 'spk0' ? 'A' : 'B' }}
+            <el-avatar :size="40" :style="{ backgroundColor: '#fff', color: '#000', border: '1px solid #eee' }">
+              {{ resolveSpeakerDisplayName(item).charAt(0).toUpperCase() }}
             </el-avatar>
           </div>
           <div class="chat-content">
               <div class="chat-meta">
                 <div class="meta-speaker">
-                  <span>{{ item.spk === 'spk0' ? '对方' : '我方' }} #{{ index + 1 }}</span>
+                  <span>{{ resolveSpeakerDisplayName(item) }}</span>
                 </div>
                 <div class="edit-btn-group" v-if="!item.isEditing">
                   <div class="tool-item" @click.stop="editSegment(item)"><el-icon><Edit /></el-icon><span>编辑对话</span></div>
@@ -396,6 +490,7 @@ onUnmounted(stopPolling)
       </div>
     </main>
 
+
     <!-- Custom Confirm Modal -->
     <Transition name="confirm-fade">
       <div v-if="confirmDialog.visible" class="confirm-overlay" @click="confirmDialog.visible = false">
@@ -407,6 +502,46 @@ onUnmounted(stopPolling)
               {{ confirmDialog.confirmText }}
             </button>
             <button class="action-btn-custom btn-cancel" @click="confirmDialog.visible = false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Voiceprint Matching Dialog -->
+    <Transition name="confirm-fade">
+      <div v-if="matchingDialogVisible" class="confirm-overlay">
+        <div class="confirm-content shadow-lg max-w-[440px]">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <el-icon :size="20"><Memo /></el-icon>
+            </div>
+            <div class="confirm-title" style="margin: 0">发现匹配声纹</div>
+          </div>
+          <div class="confirm-message">
+            系统检测到当前录音中的音色与您的声纹库契合，是否自动替换为对应姓名？
+          </div>
+
+          <div class="matching-list my-2">
+            <div v-for="item in voiceprintSuggestions" :key="item.raw_spk" 
+                 class="flex items-center justify-between p-3 bg-[#fcfbf9] rounded-xl border border-[#f0f0f0] mb-2">
+              <div class="flex items-center gap-3">
+                <div class="text-[12px] font-medium px-2 py-0.5 bg-[#eee] rounded text-[#666]">{{ item.raw_spk }}</div>
+                <el-icon class="text-[#ccc]"><Switch /></el-icon>
+                <div class="text-[14px] font-bold text-black">{{ item.suggested_name }}</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-emerald-600 font-medium">{{ (item.score * 100).toFixed(0) }}% 契合</span>
+                <el-checkbox v-model="selectedMappings[item.raw_spk]" :true-label="item.suggested_name" :false-label="null" />
+              </div>
+            </div>
+          </div>
+
+          <div class="confirm-actions">
+            <button class="action-btn-custom btn-confirm" @click="handleApplyMapping(true)" :disabled="isApplyingMapping">
+              <el-icon v-if="isApplyingMapping" class="is-loading mr-2"><Loading /></el-icon>
+              应用所选映射
+            </button>
+            <button class="action-btn-custom btn-cancel" @click="handleApplyMapping(false)" :disabled="isApplyingMapping">跳过</button>
           </div>
         </div>
       </div>
@@ -449,6 +584,27 @@ onUnmounted(stopPolling)
 .meta-divider { width: 1px; height: 16px; background: #eee; }
 
 /* Action Button */
+.secondary-action-btn {
+  background: #fff;
+  color: #4e4e4e;
+  border: 1px solid #e5e5e5;
+  border-radius: 30px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.secondary-action-btn:hover {
+  border-color: #000;
+  color: #000;
+  background: #fcfbf9;
+}
+
 .confirm-summary-btn {
   background: #000;
   color: #fff;

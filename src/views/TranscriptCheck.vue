@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getTranscriptData, generateSummary } from '@/api/audio'
+import { getTranscriptData, generateSummary, getVoiceprintList } from '@/api/audio'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { ElMessage, ElNotification } from 'element-plus'
 
@@ -17,9 +17,30 @@ const activeNames = ref([])
 const isGenerating = ref(false)
 const hasSummary = ref(false)
 const summaryData = ref({})
+const voiceprintLibrary = ref([])
+
+// 动态解析发言人姓名
+const resolveSpeakerDisplayName = (side, spkId) => {
+  // 尝试在声纹库中根据 spkId（如 "张三" 或 "spk0"）寻找目前的最新名称
+  const found = voiceprintLibrary.value.find(v => v.person_name === spkId)
+  if (found) return found.person_name
+  return side === 'left' ? '发音人 A' : '发音人 B'
+}
+
+const fetchVoiceprintLibrary = async () => {
+  try {
+    const res = await getVoiceprintList()
+    if (res?.data) voiceprintLibrary.value = res.data
+  } catch (e) {
+    console.warn('Sync voiceprint library failed', e)
+  }
+}
 
 const fetchDetail = async () => {
   try {
+    // 同步拉取声纹库
+    await fetchVoiceprintLibrary()
+    
     const res = await getTranscriptData(id)
     const data = res?.data || {}
     // Backend returns display_data instead of segments
@@ -159,7 +180,7 @@ onMounted(() => {
               <div v-for="(item, index) in segments" :key="index" class="dossier-row">
                 <div class="role-district">
                   <span class="role-badge" :class="item.side === 'left' ? 'role-badge-a' : 'role-badge-b'">
-                    {{ item.side === 'left' ? '角 色 A' : '角 色 B' }}
+                    {{ resolveSpeakerDisplayName(item.side, item.speaker || item.spk) }}
                   </span>
                 </div>
                 <div class="text-district">
@@ -409,7 +430,9 @@ onMounted(() => {
 }
 
 .role-district {
-  width: 80px; /* 固定角色标签宽度，保证右侧文本绝对对齐 */
+  width: auto; /* 改为自适应宽度以支持长姓名 */
+  min-width: 80px;
+  max-width: 120px;
   flex-shrink: 0;
   margin-right: 16px;
 }

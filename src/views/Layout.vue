@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ArrowDown, Odometer, List, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Odometer, List, UserFilled, Microphone } from '@element-plus/icons-vue'
 import { sendHeartbeat } from '@/api/audio'
 
 const router = useRouter()
@@ -15,6 +15,7 @@ const breadcrumbs = computed(() => {
   const map = {
     '/dashboard': '语言转录工作台',
     '/history': '历史记录',
+    '/voiceprint': '声纹管理',
   }
   const title = map[route.path] || (route.path.startsWith('/detail') ? '识别详情' : '')
   return title ? [{ title }] : []
@@ -79,6 +80,13 @@ onUnmounted(() => {
               :class="isActive ? 'bg-[#f5f2ef] text-black shadow-warm' : 'text-[#777169] hover:bg-[#f5f5f5] hover:text-black'">
             <el-icon class="text-[18px]"><List /></el-icon>
             <span class="font-medium text-[14px]">历史记录</span>
+          </a>
+        </router-link>
+        <router-link to="/voiceprint" custom v-slot="{ navigate, isActive }">
+          <a @click="navigate" class="flex items-center gap-3 px-3 py-2.5 rounded-[12px] transition-all duration-200 cursor-pointer"
+              :class="isActive ? 'bg-[#f5f2ef] text-black shadow-warm' : 'text-[#777169] hover:bg-[#f5f5f5] hover:text-black'">
+            <el-icon class="text-[18px]"><Microphone /></el-icon>
+            <span class="font-medium text-[14px]">声纹管理</span>
           </a>
         </router-link>
       </nav>
