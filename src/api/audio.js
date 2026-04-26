@@ -91,3 +91,11 @@ export const getMatchSuggestions = (recordId) => {
 export const applyVoiceprintMapping = (recordId, mapping) => {
   return request.post(`/api/voiceprint/apply_mapping/${recordId}`, { mapping })
 }
+
+export const getVoiceprintHistory = (id) => {
+  return request.get(`/api/voiceprint/${id}/history`)
+}
+
+export const updateVoiceprint = (id, newName) => {
+  return request.put(`/api/voiceprint/${id}`, { person_name: newName })
+}

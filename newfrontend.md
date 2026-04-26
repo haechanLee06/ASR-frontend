@@ -1,6 +1,6 @@
 # 前端工程架构与交互深度报告 (ASR-Frontend)
 > **文档说明**：本报告基于对 `ASR-frontend` 仓库全量源码的深度扫描，覆盖 `src/stores`、`src/api`、`src/router`、`src/views`、`src/components` 全部核心文件，用于毕业论文前后端交互时序图及系统架构图的绘制。
-> 生成时间：2026-03-26
+> 生成时间：2026-04-26 (Latest Update)
 
 ---
 
@@ -170,6 +170,11 @@ service.interceptors.response.use(
 | `getDashboardStats()` | `GET` | `/api/dashboard/stats` | 无 | `{ total_transcribed, total_summarized, uptime_hours }` |
 | `getDashboardKeywords()` | `GET` | `/api/dashboard/keywords` | 无 | `[{ name: string, value: number }]`，关键词词频数组 |
 | `getDashboardRecentRecords()` | `GET` | `/api/dashboard/recent_records` | 无 | `[{ id, title, status, status_label, created_at }]`，Top 5 最近记录 |
+| `getVoiceprintList()` | `GET` | `/api/voiceprint/list` | 无 | 获取当前用户声纹库全量列表 |
+| `enrollVoiceprint(name, file)` | `POST` | `/api/voiceprint/enroll` | `name: string, file: File` | 提取音频特征并入库身份 |
+| `updateVoiceprint(id, name)` | `PUT` | `/api/voiceprint/${id}` | `id: number, name: string` | **级联更新**：修改声纹名并自动同步所有历史对话 |
+| `getMatchSuggestions(recId)` | `GET` | `/api/voiceprint/match_suggestions/${id}` | `id: number` | 基于余弦相似度推荐匹配身份 |
+| `getVoiceprintHistory(id)` | `GET` | `/api/voiceprint/${id}/history` | `id: number` | 追溯该说话人在所有音频中的活动轨迹 |
 
 ---
 
@@ -425,7 +430,39 @@ onMounted(() => {
 
 ---
 
-### 3.9 内联文本编辑逻辑
+### 3.10 声纹特征库与身份自动关联机制 (Voiceprint Subsystem)
+
+**业务逻辑**：系统实现了基于 3D-Speaker 特征向量的声纹库，解决了转录中“说话人0”、“说话人1”等匿名 ID 的具名化问题。
+
+#### 1. 采集与入库 (Enrollment)
+前端通过 `navigator.mediaDevices.getUserMedia` 实现本地 5s-15s 的高清音频采集，或通过 `File API` 上传存量音频。后端提取名为 `embedding.npy` 的 192 维特征向量持久化存储。
+
+#### 2. 身份自动建议 (Matching Strategy)
+当用户进入 `Detail.vue` 且记录未匹配时，前端自动调用 `getMatchSuggestions`。
+- **匹配算法**：后端对比 `RecordSpeaker` 与 `VoicePrint` 库。
+- **UI 引导**：若相似度超过 0.65，系统弹出“智能匹配建议”对话框，用户一键确认即可完成全篇身份替换。
+
+#### 3. 数据一致性级联更新 (Cascading Update)
+针对“姓名修改”这一高频场景，系统实现了**跨表级联同步**：
+- 用户在 `Voiceprint.vue` 修改名称。
+- 后端更新声纹库主表。
+- 后端自动扫描并更新 `DialogueSegment`（对话历史）与 `Split`（切分记录）中所有匹配该旧名称的字段。
+- 前端通过状态刷新确保库中记录与详情页显示实时对齐。
+
+### 3.11 全局自研高级模态框 (Premium Overlays) 指南
+
+**设计哲学**：为了维持“Gemini SaaS”极简审美，系统全面弃用了 Element Plus 默认的 `ElMessageBox`。
+
+#### 实现技术栈
+- **Transition**: `confirm-fade` 过渡动画（透明度 + 缩放）。
+- **Backdrop**: `backdrop-filter: blur(4px)` 高性能模糊遮罩。
+- **Scoped Store**: 在各页面组件内维护 `confirmDialog` 响应式对象，支持动态标题、消息、确认按钮文本及回调函数 (`onConfirm`)。
+
+#### 核心优势
+1. **非阻塞式操作**：配合 `async/await`，在确认后无感执行 API 请求并刷新视图。
+2. **沉浸式体验**：弹窗居中对齐，背景模糊保留了当前页面的上下文感，减少了用户的心理中断压力。
+
+### 3.12 内联文本编辑逻辑
 
 Detail.vue 实现了"气泡原地编辑"交互，无需弹窗，直接在文本显示区域切换编辑态。
 
@@ -504,8 +541,9 @@ const saveEdit = async (item, index) => {
 / (Layout.vue - 后台框架壳)
 ├── /dashboard          → Dashboard.vue （工作台）
 ├── /history            → History.vue   （历史记录列表）
-├── /detail/:id         → Detail.vue    （音文对齐详情页）
-└── /transcript-check/:id → TranscriptCheck.vue （AI 质检报告页）
+├── /detail/:id         → Detail.vue    （音文对齐详情页 + 声纹识别入口）
+├── /transcript-check/:id → TranscriptCheck.vue （AI 质检报告页）
+└── /voiceprint         → Voiceprint.vue （发音人特征管理库）
 
 /login                  → Login.vue     （独立登录页，无 Layout 嵌套）
 ```
@@ -543,9 +581,14 @@ App.vue
                       │     ├── Main: 气泡流分析区（支持 Wavesurfer 声纹取证播放）
                       │     └── Trigger: 自研 CustomConfirm 高级确认模态框
                       │
-                      └── TranscriptCheck.vue（双栏 AI 质检视图）
-                            ├── .transcript-panel（剧本溯源区）
-                            └── .summary-panel（LLM 多维度总结展示区）
+                      ├── TranscriptCheck.vue（双栏 AI 质检视图）
+                      │     ├── .transcript-panel（剧本溯源区）
+                      │     └── .summary-panel（LLM 多维度总结展示区）
+                      │
+                      └── Voiceprint.vue（声纹特征管理舱）
+                            ├── 发音人卡片网格 (Renaming/Deletion/History)
+                            ├── EnrollDialog (录音/上传入库)
+                            └── HistoryDrawer (身份活动追溯轴)
 ```
 
 ---
@@ -708,6 +751,9 @@ HTML 渲染：
 | **音文对齐播放** | 原生 Audio API 实例 + timeupdate 事件 | 每段独立切分音频文件，el-slider 同步进度 |
 | **内联文本编辑** | item.editText 中间缓冲变量 | 点击Edit图标进入编辑态，PUT API 持久化后更新视图 |
 | **AI 质检报告** | generateSummary (timeout=300s) | 多层 JSON 解包，兼容两种键名格式，双栏互斥布局 |
+| **声纹匹配映射** | applyVoiceprintMapping | `raw_spk` (e.g. spk0) 到实名姓名的全局映射应用 |
+| **级联名更** | updateVoiceprint | 实现声纹库与全量通话记录的姓名同步 |
+| **视觉一致性** | Custom Transition Overlays | 全栈自研确认模态框，实现全系统沉浸式交互 |
 | **引擎状态监控** | Promise.allSettled 并行请求 | 任一失败不影响另一模块渲染，三态指示灯 |
 | **响应式分屏** | CSS flex + hasSummary 控制类 | .half-width → flex:4 / summary-panel → flex:6 |
 
@@ -752,7 +798,9 @@ Dashboard 轮询（每 1s）:
 | **功能扩展** | DeleteRecord、TranscriptCheck 页面、内联编辑 |
 | **UI 重构 ×4** | Login 企业级重构 → Glassmorphism → Prodify → Gemini SaaS 风格定型 |
 | **Dashboard 完善** | DashboardStatusBar 组件、Stats/Keywords/RecentRecords API 对接 |
-| **当前稳态** | Gemini 专业级 B 端 AI 控制台，TailwindCSS 全面样式管理 |
+| **声纹系统集成** | Voiceprint 核心链路调通：录制→特征提取→相似度匹配→全局应用 |
+| **交互深度优化** | 自研 Premium Overlays，实现 100% 定制化交互，适配毕业论文演示 |
+| **当前稳态** | Gemini 专业级 B 端 AI 控制台，具备完整的“声纹识别+四川话转写+AI总结”能力 |
 
 ---
 

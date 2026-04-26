@@ -11,6 +11,26 @@ const loading = ref(true)
 const selectedIds = ref(new Set())
 const router = useRouter()
 
+// Custom Confirm logic
+const confirmDialog = ref({
+  visible: false,
+  title: '',
+  message: '',
+  confirmText: '确定',
+  onConfirm: null
+})
+
+const showConfirm = (title, message, confirmText, onConfirm) => {
+  confirmDialog.value = { visible: true, title, message, confirmText, onConfirm }
+}
+
+const handleConfirm = async () => {
+  if (confirmDialog.value.onConfirm) {
+    await confirmDialog.value.onConfirm()
+  }
+  confirmDialog.value.visible = false
+}
+
 async function fetchHistory() {
   loading.value = true
   try {
@@ -72,17 +92,20 @@ async function handleDeleteRow(row) {
   const id = row?.id || row?.record_id
   if (!id) return
   
-  ElMessageBox.confirm('这将会永久销毁此条转录记录及相关音频，是否继续？', '防误删确认', {
-    confirmButtonText: '强制销毁',
-    cancelButtonText: '保留',
-    type: 'warning',
-  }).then(async () => {
-    try {
-      await deleteRecord(id)
-      ElMessage.success('已销毁')
-      fetchHistory()
-    } catch (e) {}
-  }).catch(() => {})
+  showConfirm(
+    '销毁记录',
+    '这将会从系统中永久删除该条转录记录以及关联的原始音频文件、声纹特征，此操作不可撤销。是否继续？',
+    '强制销毁',
+    async () => {
+      try {
+        await deleteRecord(id)
+        ElMessage.success('已销毁')
+        fetchHistory()
+      } catch (e) {
+        ElMessage.error('销毁失败')
+      }
+    }
+  )
 }
 
 function goDetail(row) {
@@ -305,6 +328,22 @@ const getStatusPillClass = (status) => {
         </button>
       </div>
     </transition>
+
+    <!-- Custom Confirm Modal -->
+    <Transition name="confirm-fade">
+      <div v-if="confirmDialog.visible" class="confirm-overlay" @click="confirmDialog.visible = false">
+        <div class="confirm-content shadow-lg animate-scale-up" @click.stop>
+          <div class="confirm-title">{{ confirmDialog.title }}</div>
+          <div class="confirm-message">{{ confirmDialog.message }}</div>
+          <div class="confirm-actions">
+            <button class="action-btn-custom btn-confirm" @click="handleConfirm">
+              {{ confirmDialog.confirmText }}
+            </button>
+            <button class="action-btn-custom btn-cancel" @click="confirmDialog.visible = false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -409,4 +448,26 @@ const getStatusPillClass = (status) => {
 .mini-action-btn.btn-confirm { background: #000; color: #fff; }
 .mini-action-btn.btn-cancel { background: #f0f0f0; color: #666; }
 .mini-action-btn:hover { transform: scale(1.1); }
+
+/* Custom Overlay Style */
+.confirm-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; }
+.confirm-content { background: #fff; border-radius: 20px; padding: 32px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 16px; border: 1px solid #f0f0f0; }
+.confirm-title { font-size: 20px; font-weight: 500; color: #000; font-family: 'Waldenburg', sans-serif; }
+.confirm-message { font-size: 14px; color: #666; line-height: 1.6; }
+.confirm-actions { display: flex; flex-direction: row-reverse; gap: 12px; margin-top: 12px; }
+
+.action-btn-custom { height: 40px; padding: 0 24px; border-radius: 24px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; }
+.btn-confirm { background: #000; color: #fff; }
+.btn-confirm:hover { background: #333; transform: scale(1.02); }
+.btn-cancel { background: #f0f0f0; color: #666; }
+.btn-cancel:hover { background: #e5e5e5; color: #000; }
+
+.confirm-fade-enter-active, .confirm-fade-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.confirm-fade-enter-from, .confirm-fade-leave-to { opacity: 0; transform: scale(0.95); }
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.animate-scale-up { animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 </style>

@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getVoiceprintList, enrollVoiceprint, deleteVoiceprint } from '@/api/audio'
-import { Plus, Delete, Microphone, PictureRounded } from '@element-plus/icons-vue'
+import { Plus, Delete, Microphone, PictureRounded, Timer, View, Edit } from '@element-plus/icons-vue'
+import { getVoiceprintList, enrollVoiceprint, deleteVoiceprint, getVoiceprintHistory, updateVoiceprint } from '@/api/audio'
 
 defineOptions({ name: 'Voiceprint' })
 
@@ -16,6 +16,34 @@ const enrollForm = ref({
   file: null
 })
 
+// Custom Confirm logic
+const confirmDialog = ref({
+  visible: false,
+  title: '',
+  message: '',
+  confirmText: '确定',
+  onConfirm: null
+})
+
+const showConfirm = (title, message, confirmText, onConfirm) => {
+  confirmDialog.value = { visible: true, title, message, confirmText, onConfirm }
+}
+
+const handleConfirm = async () => {
+  if (confirmDialog.value.onConfirm) {
+    await confirmDialog.value.onConfirm()
+  }
+  confirmDialog.value.visible = false
+}
+
+// History Drawer State
+const historyDrawerVisible = ref(false)
+const historyLoading = ref(false)
+const historyData = ref({
+  personName: '',
+  list: []
+})
+
 // Audio recording context
 const mediaRecorder = ref(null)
 const audioChunks = ref([])
@@ -24,6 +52,13 @@ const recordingTime = ref(0)
 let timer = null
 
 const fileInputRef = ref(null)
+
+const renameDialogVisible = ref(false)
+const isRenaming = ref(false)
+const renameForm = ref({
+  id: null,
+  personName: ''
+})
 
 const fetchList = async () => {
   isLoading.value = true
@@ -40,24 +75,66 @@ const fetchList = async () => {
 }
 
 const handleDelete = (row) => {
-  ElMessageBox.confirm(
-    `确定要删除 [${row.person_name}] 的声纹数据吗？此操作不可逆。`,
+  showConfirm(
     '删除声纹',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
+    `确定要永久销毁 [${row.person_name}] 的声纹数据吗？此操作将导致该发音人的身份识别无法自动追溯且不可逆。`,
+    '确认销毁',
+    async () => {
+      try {
+        await deleteVoiceprint(row.id)
+        ElMessage.success('已从库中销毁')
+        fetchList()
+      } catch (error) {
+        ElMessage.error(error.message || '删除失败')
+      }
     }
-  ).then(async () => {
-    try {
-      await deleteVoiceprint(row.id)
-      ElMessage.success('删除成功')
-      fetchList()
-    } catch (error) {
-      console.error(error)
-      ElMessage.error(error.message || '删除失败')
+  )
+}
+
+const handleRename = (row) => {
+  renameForm.value.id = row.id
+  renameForm.value.personName = row.person_name
+  renameDialogVisible.value = true
+}
+
+const submitRename = async () => {
+  if (!renameForm.value.personName.trim()) {
+    ElMessage.warning('名称不能为空')
+    return
+  }
+  isRenaming.value = true
+  try {
+    await updateVoiceprint(renameForm.value.id, renameForm.value.personName.trim())
+    ElMessage.success('名称修改成功')
+    renameDialogVisible.value = false
+    fetchList()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error.message || '修改失败')
+  } finally {
+    isRenaming.value = false
+  }
+}
+
+const handleViewHistory = async (row) => {
+  historyData.value.personName = row.person_name
+  historyData.value.list = []
+  historyDrawerVisible.value = true
+  historyLoading.value = true
+  
+  try {
+    const res = await getVoiceprintHistory(row.id)
+    if (res?.code === 200) {
+      // Backend returns { data: [...], person_name: "..." }
+      // Based on the second implementation I kept: { code: 200, data: [...], person_name: "..." }
+      historyData.value.list = res.data
     }
-  }).catch(() => {})
+  } catch (error) {
+    console.error('Failed to fetch speaker history', error)
+    ElMessage.error('获取历史记录失败')
+  } finally {
+    historyLoading.value = false
+  }
 }
 
 // ─── Enroll Logic ───
@@ -209,13 +286,55 @@ onMounted(() => {
           
           <div class="mt-4 pt-4 border-t border-[#f5f5f5] flex items-center justify-between">
             <span class="text-[11px] text-[#999]">{{ vp.created_at }}</span>
-            <button @click="handleDelete(vp)" class="text-[#ccc] hover:text-rose-500 transition-colors tooltip" data-tip="删除该声纹">
-              <el-icon class="text-[16px]"><Delete /></el-icon>
-            </button>
+            <div class="flex items-center gap-2">
+              <button @click="handleRename(vp)" class="p-1.5 rounded-full hover:bg-emerald-50 text-[#999] hover:text-emerald-600 transition-all tooltip" data-tip="修改名称">
+                <el-icon class="text-[16px]"><Edit /></el-icon>
+              </button>
+              <button @click="handleViewHistory(vp)" class="p-1.5 rounded-full hover:bg-emerald-50 text-[#999] hover:text-emerald-600 transition-all tooltip" data-tip="查看活动轨迹">
+                <el-icon class="text-[16px]"><Timer /></el-icon>
+              </button>
+              <button @click="handleDelete(vp)" class="p-1.5 rounded-full hover:bg-rose-50 text-[#ccc] hover:text-rose-500 transition-all tooltip" data-tip="删除该声纹">
+                <el-icon class="text-[16px]"><Delete /></el-icon>
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- History Drawer -->
+    <el-drawer v-model="historyDrawerVisible" :title="`活动轨迹: ${historyData.personName}`" size="520px" class="premium-drawer">
+      <div v-loading="historyLoading" class="px-2">
+        <div v-if="historyData.list.length === 0 && !historyLoading" class="py-20 flex flex-col items-center justify-center">
+          <div class="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mb-4">
+             <el-icon class="text-[24px] text-slate-300"><Timer /></el-icon>
+          </div>
+          <p class="text-[14px] text-slate-400">该说话人暂无历史识别记录</p>
+          <p class="text-[12px] text-slate-300 mt-1">在转录详情页进行声纹匹配后，记录将出现在此处</p>
+        </div>
+
+        <div v-else class="space-y-4">
+          <div v-for="item in historyData.list" :key="item.record_id" 
+               class="p-4 border border-[#f0f0f0] rounded-[12px] hover:border-emerald-200 hover:shadow-sm transition-all bg-white relative group">
+            <div class="flex justify-between items-start mb-2">
+              <h4 class="text-[14px] font-semibold text-slate-800 line-clamp-1 pr-12">{{ item.title }}</h4>
+              <span class="text-[11px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full font-medium">
+                发言 {{ item.segment_count }} 次
+              </span>
+            </div>
+            <div class="flex items-center justify-between mt-3">
+              <div class="flex items-center gap-2 text-[#999]">
+                <el-icon class="text-[12px]"><Timer /></el-icon>
+                <span class="text-[12px]">{{ item.upload_time }}</span>
+              </div>
+              <router-link :to="`/detail/${item.record_id}`" class="text-[12px] text-black font-medium hover:underline flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                去看看 <el-icon class="text-[10px]"><View /></el-icon>
+              </router-link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
 
     <!-- Enroll Dialog -->
     <el-dialog v-model="dialogVisible" title="新增发音人声纹" width="480px" class="premium-dialog" :close-on-click-modal="false">
@@ -272,6 +391,45 @@ onMounted(() => {
         </div>
       </template>
     </el-dialog>
+    <!-- Rename Dialog -->
+    <el-dialog v-model="renameDialogVisible" title="修改声纹身份名称" width="440px" class="premium-dialog" :close-on-click-modal="false">
+      <div class="py-2">
+        <label class="block text-[13px] font-medium text-gray-700 mb-1.5">新的身份标识 / 姓名*</label>
+        <p class="text-[12px] text-[#999] mb-3 leading-relaxed">修改后，系统中所有关联到此声纹的转录对话都将自动更新为新名字。</p>
+        <input v-model="renameForm.personName" 
+               type="text" 
+               placeholder="请输入新名称" 
+               class="w-full px-4 py-2.5 rounded-[10px] border border-[#dcdfe6] focus:border-black focus:ring-1 focus:ring-black outline-none transition-all text-[14px]"
+               @keyup.enter="submitRename">
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3 mt-2">
+          <button @click="renameDialogVisible = false" class="px-5 py-2 text-[14px] text-[#666] hover:bg-[#f5f5f5] rounded-full transition-colors" :disabled="isRenaming">
+            取消
+          </button>
+          <button @click="submitRename" class="px-5 py-2 text-[14px] bg-black text-white rounded-full hover:bg-[#333] transition-colors shadow flex items-center gap-2 disabled:opacity-50" :disabled="isRenaming">
+            <el-icon v-if="isRenaming" class="animate-spin"><Loading /></el-icon>
+            {{ isRenaming ? '正在更新...' : '保存修改' }}
+          </button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- Custom Confirm Modal -->
+    <Transition name="confirm-fade">
+      <div v-if="confirmDialog.visible" class="confirm-overlay" @click="confirmDialog.visible = false">
+        <div class="confirm-content shadow-lg animate-scale-up" @click.stop>
+          <div class="confirm-title">{{ confirmDialog.title }}</div>
+          <div class="confirm-message">{{ confirmDialog.message }}</div>
+          <div class="confirm-actions">
+            <button class="action-btn-custom btn-confirm" @click="handleConfirm">
+              {{ confirmDialog.confirmText }}
+            </button>
+            <button class="action-btn-custom btn-cancel" @click="confirmDialog.visible = false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
   </div>
 </template>
@@ -295,4 +453,26 @@ onMounted(() => {
   pointer-events: none;
   opacity: 1;
 }
+
+/* Custom Overlay Style */
+.confirm-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; }
+.confirm-content { background: #fff; border-radius: 20px; padding: 32px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 16px; border: 1px solid #f0f0f0; }
+.confirm-title { font-size: 20px; font-weight: 500; color: #000; font-family: 'Waldenburg', sans-serif; }
+.confirm-message { font-size: 14px; color: #666; line-height: 1.6; }
+.confirm-actions { display: flex; flex-direction: row-reverse; gap: 12px; margin-top: 12px; }
+
+.action-btn-custom { height: 40px; padding: 0 24px; border-radius: 24px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; }
+.btn-confirm { background: #000; color: #fff; }
+.btn-confirm:hover { background: #333; transform: scale(1.02); }
+.btn-cancel { background: #f0f0f0; color: #666; }
+.btn-cancel:hover { background: #e5e5e5; color: #000; }
+
+.confirm-fade-enter-active, .confirm-fade-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.confirm-fade-enter-from, .confirm-fade-leave-to { opacity: 0; transform: scale(0.95); }
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.animate-scale-up { animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 </style>

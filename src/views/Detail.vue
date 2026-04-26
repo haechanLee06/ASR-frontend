@@ -199,7 +199,7 @@ const resolveSpeakerDisplayName = (item) => {
   return item.speaker_name || (speakerSideMap.value[item.spk] === 'left' ? '发音人 A' : '发音人 B')
 }
 
-const checkVoiceprintSuggestions = async () => {
+const checkVoiceprintSuggestions = async (isManual = false) => {
   console.log('Fetching voiceprint suggestions for ID:', route.params.id)
   try {
     const res = await getMatchSuggestions(route.params.id)
@@ -215,9 +215,21 @@ const checkVoiceprintSuggestions = async () => {
       matchingDialogVisible.value = true
     } else {
       console.log('No matched voiceprints found in suggestions.')
+      // 只有手动点击按钮，或者首次进入且真的没有任何建议时，弹出引导（此处逻辑主要响应用户点击）
+      if (isManual) {
+        showConfirm(
+          '未找到匹配声纹',
+          '当前声纹库中暂无与该音频匹配的特征信息。建议您先前往“声纹管理”库录入发音人的原始声纹样本，系统将依此进行识别。',
+          '前往声纹管理库',
+          () => {
+            router.push('/voiceprint')
+          }
+        )
+      }
     }
   } catch (e) {
     console.error('Failed to get voiceprint suggestions', e)
+    if (isManual) ElMessage.error('查询声纹匹配失败')
   }
 }
 
@@ -407,7 +419,7 @@ onUnmounted(stopPolling)
       <!-- Section 3: Action Button -->
       <div class="header-section section-right" v-if="recordStatus === 'success'">
         <div class="flex items-center gap-3">
-          <button class="secondary-action-btn" @click="checkVoiceprintSuggestions" title="重新扫描并匹配声纹库">
+          <button class="secondary-action-btn" @click="checkVoiceprintSuggestions(true)" title="重新扫描并匹配声纹库">
             <el-icon><Microphone /></el-icon>
             <span>声纹匹配</span>
           </button>

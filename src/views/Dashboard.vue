@@ -22,6 +22,26 @@ let pollTimer = null
 // Session start time to track "NEW" records
 const sessionStartTime = ref(Date.now())
 
+// Custom Confirm logic
+const confirmDialog = ref({
+  visible: false,
+  title: '',
+  message: '',
+  confirmText: '确定',
+  onConfirm: null
+})
+
+const showConfirm = (title, message, confirmText, onConfirm) => {
+  confirmDialog.value = { visible: true, title, message, confirmText, onConfirm }
+}
+
+const handleConfirm = async () => {
+  if (confirmDialog.value.onConfirm) {
+    await confirmDialog.value.onConfirm()
+  }
+  confirmDialog.value.visible = false
+}
+
 // ─── 区块二：数据速览 & 文件上传 ────────────────────────────────────────────
 const stats = ref({ total_transcribed: 0, total_summarized: 0 })
 const uptime = ref({ days: 0, hours: 0 })
@@ -139,26 +159,23 @@ const handleDelete = (row) => {
 
   const isProcessing = row.status === 'processing'
   const msg = isProcessing 
-    ? '该任务正在进行中，删除将中断后台处理，确定吗？'
-    : '确定要删除该任务吗？'
+    ? '该任务正在进行中，删除将中断后台处理并销毁相关音频，确定吗？'
+    : '确定要永久销毁该条转录任务及所有关联数据吗？'
 
-  ElMessageBox.confirm(
+  showConfirm(
+    '销毁任务',
     msg,
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
+    '确认销毁',
+    async () => {
+      try {
+        await deleteRecord(id)
+        taskStore.removeTask(id)
+        ElMessage.success('已清理')
+      } catch (e) {
+        console.error(e)
+      }
     }
-  ).then(async () => {
-    try {
-      await deleteRecord(id)
-      taskStore.removeTask(id)
-      ElMessage.success('删除成功')
-    } catch (e) {
-      console.error(e)
-    }
-  }).catch(() => {})
+  )
 }
 
 const checkStatus = async () => {
@@ -457,7 +474,8 @@ onUnmounted(() => {
 })
 
 const goDetail = (row) => {
-  router.push(`/detail/${row.record_id}`)
+  const id = row.id || row.record_id
+  router.push(`/detail/${id}`)
 }
 
 const goTranscript = (row) => {
@@ -667,7 +685,7 @@ const goTranscript = (row) => {
             <div class="flex flex-col gap-1.5">
               <div v-for="record in recentRecords" :key="record.id"
                    class="flex justify-between items-center py-4 hover:bg-[#f6f6f6] px-4 -mx-4 rounded-[12px] cursor-pointer transition-all border border-transparent hover:border-[#e5e5e5]"
-                   @click="goTranscript(record)">
+                   @click="goDetail(record)">
                 <div class="flex items-center min-w-0 relative">
                   <!-- New Badge (Based on upload_time) -->
                   <div v-if="isNewRecord(record)" class="absolute -left-2 -top-2 z-50">
@@ -704,10 +722,25 @@ const goTranscript = (row) => {
           </template>
         </div>
       </div>
-
     </div>
   </div>
-</div>
+    
+    <!-- Custom Confirm Modal -->
+    <Transition name="confirm-fade">
+      <div v-if="confirmDialog.visible" class="confirm-overlay" @click="confirmDialog.visible = false">
+        <div class="confirm-content shadow-lg animate-scale-up" @click.stop>
+          <div class="confirm-title">{{ confirmDialog.title }}</div>
+          <div class="confirm-message">{{ confirmDialog.message }}</div>
+          <div class="confirm-actions">
+            <button class="action-btn-custom btn-confirm" @click="handleConfirm">
+              {{ confirmDialog.confirmText }}
+            </button>
+            <button class="action-btn-custom btn-cancel" @click="confirmDialog.visible = false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </div>
 </template>
 
 <style scoped>
@@ -764,6 +797,28 @@ const goTranscript = (row) => {
   50% { transform: rotate(15deg) scale(1.1); box-shadow: 0 0 0 4px #fff, 0 6px 15px rgba(0,0,0,0.4); }
   100% { transform: rotate(15deg) scale(1); box-shadow: 0 0 0 2px #fff, 0 4px 10px rgba(0,0,0,0.3); }
 }
+
+/* Custom Overlay Style Shared */
+.confirm-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; }
+.confirm-content { background: #fff; border-radius: 20px; padding: 32px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 16px; border: 1px solid #f0f0f0; }
+.confirm-title { font-size: 20px; font-weight: 500; color: #000; font-family: 'Waldenburg', sans-serif; }
+.confirm-message { font-size: 14px; color: #666; line-height: 1.6; }
+.confirm-actions { display: flex; flex-direction: row-reverse; gap: 12px; margin-top: 12px; }
+
+.action-btn-custom { height: 40px; padding: 0 24px; border-radius: 24px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 500; }
+.btn-confirm { background: #000; color: #fff; }
+.btn-confirm:hover { background: #333; transform: scale(1.02); }
+.btn-cancel { background: #f0f0f0; color: #666; }
+.btn-cancel:hover { background: #e5e5e5; color: #000; }
+
+.confirm-fade-enter-active, .confirm-fade-leave-active { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.confirm-fade-enter-from, .confirm-fade-leave-to { opacity: 0; transform: scale(0.95); }
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.animate-scale-up { animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 </style>
 
 
